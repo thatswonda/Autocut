@@ -11,8 +11,18 @@ from sqlalchemy.orm import Session
 from autoedit_pipeline.plans import PlanLimits, billing_enabled, effective_plan, fmt_duration, plan_limits
 from autoedit_schemas.media import MediaInfo
 
-from .db import AnalysisArtifact, Project, ProjectClip, Upload, User
-from .schemas import ApiError, ClipOut, LengthMeter, LimitsOut, ProjectOut, ProjectSummary
+from .db import AnalysisArtifact, Asset, MotionPlan, Project, ProjectClip, Render, Upload, User
+from .schemas import (
+    ApiError,
+    AssetOut,
+    ClipOut,
+    LengthMeter,
+    LimitsOut,
+    MotionOut,
+    ProjectOut,
+    ProjectSummary,
+    RenderOut,
+)
 from .settings import get_settings
 from .storage import Storage, clip_prefix, project_prefix
 
@@ -181,6 +191,8 @@ def delete_project(db: Session, storage: Storage, user: User, project: Project) 
     """Delete a project and everything derived from it. Source uploads used by no other project go too."""
     upload_ids = {c.upload_id for c in project.clips}
     removed_objects = storage.delete_prefix(project_prefix(user.id, project.id))
+    for asset in db.scalars(select(Asset).where(Asset.project_id == project.id)).all():
+        removed_objects += storage.delete_prefix(asset.storage_key)
     db.delete(project)
     db.flush()
     still_used = set(
@@ -201,19 +213,73 @@ def delete_project(db: Session, storage: Storage, user: User, project: Project) 
 
 
 def project_status(project: Project) -> tuple[str, str | None, float]:
+    """One status for the sidebar and progress stream, covering analysis, storyboard and rendering."""
+    latest = project.renders[0] if project.renders else None
+    if latest is not None and latest.status in ("queued", "processing"):
+        return "rendering", latest.stage or "queued", round(latest.progress, 4)
+    if project.mode == "motion":
+        mp = project.motion
+        if mp is None:
+            return "empty", None, 0.0
+        if mp.status in ("queued", "planning"):
+            return "planning", mp.stage or "queued", round(mp.progress, 4)
+        if mp.pending:
+            return "planning", "Rewriting a scene", 0.5
+        if mp.status == "failed":
+            return "failed", None, 1.0
+        if latest is not None and latest.status == "ready":
+            return "done", None, 1.0
+        return "review", None, 1.0
     clips = project.clips
     if not clips:
         return "empty", None, 0.0
     states = [c.status for c in clips]
     progress = sum(c.progress if c.status != "failed" else 1.0 for c in clips) / len(clips)
-    if all(s == "ready" for s in states):
-        return "ready", None, 1.0
-    if all(s == "failed" for s in states):
-        return "failed", None, 1.0
     if any(s in ("queued", "processing") for s in states):
         stages = [c.stage for c in clips if c.status == "processing" and c.stage]
         return "analyzing", (stages[0] if stages else "queued"), round(progress, 4)
+    if all(s == "failed" for s in states):
+        return "failed", None, 1.0
+    if latest is not None and latest.status == "ready":
+        return "done", None, 1.0
+    if all(s == "ready" for s in states):
+        return "ready", None, 1.0
     return "partial", None, 1.0
+
+
+SETTLED = {"empty", "ready", "partial", "failed", "review", "done"}
+
+
+def asset_out(a: Asset) -> AssetOut:
+    return AssetOut(id=a.id, kind=a.kind, filename=a.filename, width=a.width, height=a.height, source=a.source,
+                    url=f"/v1/assets/{a.id}/file")  # fmt: skip
+
+
+def render_out(r: Render) -> RenderOut:
+    ready = r.status == "ready" and r.storage_key
+    return RenderOut(
+        id=r.id, kind=r.kind, status=r.status,  # type: ignore[arg-type]
+        stage=r.stage, progress=round(r.progress, 4), error_code=r.error_code, error=r.error,
+        settings=r.settings or {}, report=r.report, duration_s=r.duration_s, width=r.width, height=r.height,
+        video_url=f"/v1/renders/{r.id}/video" if ready else None,
+        download_url=f"/v1/renders/{r.id}/video?download=1" if ready else None,
+        poster_url=f"/v1/renders/{r.id}/poster" if ready and r.poster_key else None,
+        created_at=r.created_at,
+    )  # fmt: skip
+
+
+def motion_out(db: Session, project: Project) -> MotionOut | None:
+    mp = project.motion
+    if mp is None:
+        return None
+    assets = db.scalars(select(Asset).where(Asset.project_id == project.id).order_by(Asset.created_at)).all()
+    return MotionOut(
+        status=mp.status,  # type: ignore[arg-type]
+        stage=mp.stage, progress=round(mp.progress, 4), error_code=mp.error_code, error=mp.error,
+        brand_kit=mp.brand_kit, composition=mp.composition, version=mp.version,
+        pending_scene=(mp.pending or {}).get("scene_id"), cost_usd=mp.cost_usd or 0.0,
+        assets=[asset_out(a) for a in assets],
+    )  # fmt: skip
 
 
 def artifact(clip: ProjectClip, kind: str) -> AnalysisArtifact | None:
@@ -253,7 +319,7 @@ def meter(project: Project, limits: PlanLimits) -> LengthMeter:
     )
 
 
-def project_out(project: Project, user: User) -> ProjectOut:
+def project_out(project: Project, user: User, db: Session | None = None) -> ProjectOut:
     status, stage, progress = project_status(project)
     return ProjectOut(
         id=project.id,
@@ -266,6 +332,8 @@ def project_out(project: Project, user: User) -> ProjectOut:
         progress=progress,
         meter=meter(project, limits_for(user)),
         clips=[clip_out(project, c) for c in sorted(project.clips, key=lambda c: c.position)],
+        motion=motion_out(db, project) if db is not None and project.mode == "motion" else None,
+        renders=[render_out(r) for r in project.renders[:10]],
         created_at=project.created_at,
         updated_at=project.updated_at,
     )

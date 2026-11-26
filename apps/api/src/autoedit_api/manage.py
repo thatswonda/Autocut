@@ -50,14 +50,14 @@ def worker(
 
 
 @app.command("run-job")
-def run_job(clip_id: str) -> None:
-    """Analyse one clip in this process (used by AUTOEDIT_QUEUE_MODE=process)."""
-    from .jobs import analyze_clip_job
+def run_job(kind: str, obj_id: str) -> None:
+    """Run one background job in this process (used by AUTOEDIT_QUEUE_MODE=process)."""
     from .logging import configure_logging
+    from .queue import job_function
 
     configure_logging()
     try:
-        analyze_clip_job(clip_id)
+        job_function(kind)(obj_id)
     except Exception:
         raise typer.Exit(1) from None
 

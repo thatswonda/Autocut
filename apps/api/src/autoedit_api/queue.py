@@ -1,11 +1,18 @@
-"""Job dispatch: RQ + Redis, a child process per job (single small server), or inline (tests)."""
+"""Job dispatch: RQ + Redis, a child process per job (single small server), or inline (tests).
+
+Job kinds: ``analyze`` (clip id), ``motion_plan`` (project id), ``scene_regen`` (project id), ``render``
+(render id).
+"""
 
 from __future__ import annotations
 
+import importlib
 import logging
 import subprocess
 import sys
 import threading
+import uuid
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
 
@@ -14,6 +21,18 @@ from .settings import get_settings
 log = logging.getLogger(__name__)
 
 ANALYSIS_QUEUE = "analysis"
+
+JOBS: dict[str, str] = {
+    "analyze": "autoedit_api.jobs:analyze_clip_job",
+    "motion_plan": "autoedit_api.jobs_media:motion_plan_job",
+    "scene_regen": "autoedit_api.jobs_media:scene_regen_job",
+    "render": "autoedit_api.jobs_media:render_job",
+}
+
+
+def job_function(kind: str) -> Callable[[str], Any]:
+    module, name = JOBS[kind].split(":")
+    return getattr(importlib.import_module(module), name)  # type: ignore[no-any-return]
 
 
 @lru_cache
@@ -26,13 +45,13 @@ def redis_conn() -> Any:
 _process_lock = threading.Lock()
 
 
-def _run_in_child(clip_id: str) -> None:
-    """Analyse one clip in a fresh Python process; jobs run strictly one at a time."""
+def _run_in_child(kind: str, obj_id: str) -> None:
+    """Run one job in a fresh Python process; jobs run strictly one at a time (memory stays bounded)."""
     settings = get_settings()
     with _process_lock:
         try:
             proc = subprocess.run(
-                [sys.executable, "-m", "autoedit_api.manage", "run-job", clip_id],
+                [sys.executable, "-m", "autoedit_api.manage", "run-job", kind, obj_id],
                 timeout=settings.job_timeout_s,
                 check=False,
             )
@@ -40,39 +59,44 @@ def _run_in_child(clip_id: str) -> None:
         except subprocess.TimeoutExpired:
             code = -1
     if code != 0:
-        from .jobs import mark_crashed
+        from .jobs import mark_job_crashed
 
-        mark_crashed(clip_id, code)
+        mark_job_crashed(kind, obj_id, code)
 
 
-def enqueue_clip_analysis(clip_id: str) -> None:
+def enqueue(kind: str, obj_id: str) -> None:
     settings = get_settings()
+    if kind not in JOBS:
+        raise ValueError(f"unknown job kind {kind}")
     if settings.queue_mode == "process":
-        threading.Thread(target=_run_in_child, args=(clip_id,), name=f"job-{clip_id}", daemon=True).start()
+        threading.Thread(target=_run_in_child, args=(kind, obj_id), name=f"job-{kind}-{obj_id}", daemon=True).start()
         return
     if settings.queue_mode == "inline":
-        from .jobs import analyze_clip_job
-
         try:
-            analyze_clip_job(clip_id)
+            job_function(kind)(obj_id)
         except Exception:
-            log.exception("inline analysis failed for %s", clip_id)
+            log.exception("inline %s job failed for %s", kind, obj_id)
         return
 
     from rq import Queue, Retry
 
     queue = Queue(ANALYSIS_QUEUE, connection=redis_conn())
-    retries = settings.job_retries
+    retries = settings.job_retries if kind == "analyze" else 0
     queue.enqueue(
-        "autoedit_api.jobs.analyze_clip_job",
-        clip_id,
-        job_id=f"analyze-{clip_id}",  # one job per clip: re-enqueueing is a no-op while it is pending
+        JOBS[kind].replace(":", "."),
+        obj_id,
+        # One analysis job per clip; other kinds may legitimately repeat (re-render, regenerate).
+        job_id=f"analyze-{obj_id}" if kind == "analyze" else f"{kind}-{obj_id}-{uuid.uuid4().hex[:8]}",
         job_timeout=settings.job_timeout_s,
         retry=Retry(max=retries, interval=[15, 60, 180][:retries] or [15]) if retries else None,
         result_ttl=3600,
         failure_ttl=7 * 24 * 3600,
-        description=f"Stage A analysis for clip {clip_id}",
+        description=f"{kind} {obj_id}",
     )
+
+
+def enqueue_clip_analysis(clip_id: str) -> None:
+    enqueue("analyze", clip_id)
 
 
 def ping() -> bool:

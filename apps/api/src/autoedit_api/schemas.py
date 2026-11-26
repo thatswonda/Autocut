@@ -67,10 +67,15 @@ ACCEPTED_EXTENSIONS = tuple(f".{c}" for c in ACCEPTED_CONTAINERS)
 # ------------------------------------------------------------------------------------- projects
 
 
+AspectStr = Literal["9:16", "1:1", "16:9", "4:5"]
+
+
 class EditOptions(_In):
     goal: Literal["short_vertical", "youtube", "promo"] = "short_vertical"
+    aspect: AspectStr = "9:16"
     target_duration_s: float | None = Field(default=None, gt=0, le=3600)
     style: str = Field(default="energetic", max_length=64)
+    color_preset: str = Field(default="natural", max_length=32)
     language: str | None = Field(default=None, max_length=16)
     captions: bool = True
     broll: bool = True
@@ -78,14 +83,30 @@ class EditOptions(_In):
     color_grade: bool = True
     music: bool = True
     allow_reorder: bool = False
+    intro_template_id: str | None = None
+    outro_template_id: str | None = None
+
+
+class MotionOptions(_In):
+    aspect: AspectStr = "9:16"
+    duration_s: float = Field(default=20, ge=6, le=60)
+    style: str = Field(default="bold_pop", max_length=32)
+    language: str | None = Field(default=None, max_length=16)
+    goal: Literal["promo", "product_launch", "explainer", "ad", "other"] = "promo"
+    brand_name: str = Field(default="", max_length=120)
+    intro_template_id: str | None = None
+    outro_template_id: str | None = None
 
 
 class ProjectCreate(_In):
     mode: Literal["edit", "motion"]
     title: str = Field(default="", max_length=200)
     prompt: str = Field(default="", max_length=8000)
-    options: EditOptions = Field(default_factory=EditOptions)
+    options: dict[str, Any] = Field(default_factory=dict)
     upload_ids: list[str] = Field(default_factory=list, max_length=100)
+    source_urls: list[str] = Field(default_factory=list, max_length=5)
+    asset_ids: list[str] = Field(default_factory=list, max_length=12)
+    brand_authorized: bool = False
 
 
 class ClipAdd(_In):
@@ -113,6 +134,86 @@ class ClipOut(BaseModel):
     proxy_url: str | None
 
 
+class AssetOut(BaseModel):
+    id: str
+    kind: str
+    filename: str
+    width: int | None
+    height: int | None
+    source: str
+    url: str
+
+
+class MotionOut(BaseModel):
+    status: Literal["queued", "planning", "ready", "failed"]
+    stage: str | None
+    progress: float
+    error_code: str | None
+    error: str | None
+    brand_kit: dict[str, Any] | None
+    composition: dict[str, Any] | None
+    version: int
+    pending_scene: str | None
+    cost_usd: float
+    assets: list[AssetOut]
+
+
+class RenderOut(BaseModel):
+    id: str
+    kind: str
+    status: Literal["queued", "processing", "ready", "failed"]
+    stage: str | None
+    progress: float
+    error_code: str | None
+    error: str | None
+    settings: dict[str, Any]
+    report: dict[str, Any] | None
+    duration_s: float | None
+    width: int | None
+    height: int | None
+    video_url: str | None
+    download_url: str | None
+    poster_url: str | None
+    created_at: datetime
+
+
+class RenderCreate(_In):
+    resolution: Literal[720, 1080] = 720
+    aspect: AspectStr | None = None
+    color_preset: str | None = Field(default=None, max_length=32)
+    target_duration_s: float | None = Field(default=None, gt=0, le=3600)
+    intro_template_id: str | None = None
+    outro_template_id: str | None = None
+
+
+class SceneRegenerate(_In):
+    note: str = Field(default="", max_length=600)
+
+
+class BrandKitUpdate(_In):
+    name: str | None = Field(default=None, max_length=200)
+    colors: dict[str, str] | None = None
+    logo_asset: str | None = None
+
+
+class TemplateCreate(_In):
+    render_id: str
+    t_in: float = Field(ge=0)
+    t_out: float = Field(gt=0)
+    name: str = Field(min_length=1, max_length=80)
+    kind: Literal["intro", "outro", "clip"] = "clip"
+
+
+class TemplateOut(BaseModel):
+    id: str
+    name: str
+    kind: str
+    duration_s: float
+    video_url: str
+    poster_url: str | None
+    created_at: datetime
+
+
 class LimitsOut(BaseModel):
     plan: str
     max_total_raw_s: float
@@ -136,11 +237,13 @@ class ProjectOut(BaseModel):
     title: str
     prompt: str
     options: dict[str, Any]
-    status: Literal["empty", "analyzing", "ready", "partial", "failed"]
+    status: Literal["empty", "analyzing", "ready", "partial", "failed", "planning", "review", "rendering", "done"]
     stage: str | None
     progress: float
     meter: LengthMeter
     clips: list[ClipOut]
+    motion: MotionOut | None = None
+    renders: list[RenderOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -164,5 +267,6 @@ class MeOut(BaseModel):
     id: str
     plan: str
     billing_enabled: bool
+    ai_enabled: bool
     limits: LimitsOut
     projects_this_month: int

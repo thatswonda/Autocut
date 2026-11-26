@@ -291,3 +291,61 @@ def unfinished_clip_ids() -> list[str]:
         return [c.id for c in rows]
     finally:
         db.close()
+
+
+def _crash_message(exit_code: int, what: str) -> tuple[str, str]:
+    if exit_code in (-9, 137):
+        return "out_of_memory", f"The server ran out of memory during {what}. Try a smaller job or a larger server plan."
+    if exit_code == -1:
+        return "timeout", f"{what.capitalize()} took too long and was stopped."
+    return "internal_error", f"{what.capitalize()} stopped unexpectedly (exit code {exit_code}). Try again."
+
+
+def mark_job_crashed(kind: str, obj_id: str, exit_code: int) -> None:
+    """A child job died without recording an outcome. Record a clear failure for its object."""
+    if kind == "analyze":
+        mark_crashed(obj_id, exit_code)
+        return
+    from .db import MotionPlan, Render
+
+    db = session_scope()
+    try:
+        if kind == "render":
+            r = db.get(Render, obj_id)
+            if r is not None and r.status not in ("ready", "failed"):
+                r.status, r.stage = "failed", None
+                r.error_code, r.error = _crash_message(exit_code, "rendering")
+        else:
+            mp = db.get(MotionPlan, obj_id)
+            if mp is not None and mp.status not in ("ready", "failed"):
+                mp.status, mp.stage = "failed", None
+                mp.error_code, mp.error = _crash_message(exit_code, "storyboarding")
+            elif mp is not None and mp.pending:
+                mp.pending = None
+                mp.error_code, mp.error = _crash_message(exit_code, "the scene change")
+        db.commit()
+    finally:
+        db.close()
+    log.error("%s job for %s exited with %s", kind, obj_id, exit_code)
+
+
+def unfinished_jobs() -> list[tuple[str, str]]:
+    """Everything a restart interrupted: clips, storyboards and renders, oldest first."""
+    from .db import MotionPlan, Render
+
+    jobs = [("analyze", cid) for cid in unfinished_clip_ids()]
+    db = session_scope()
+    try:
+        for mp in db.scalars(select(MotionPlan).where(MotionPlan.status.in_(("queued", "planning")))).all():
+            mp.status, mp.stage, mp.progress = "queued", None, 0.0
+            jobs.append(("motion_plan", mp.project_id))
+        for mp in db.scalars(select(MotionPlan).where(MotionPlan.status == "ready")).all():
+            if mp.pending:
+                jobs.append(("scene_regen", mp.project_id))
+        for r in db.scalars(select(Render).where(Render.status.in_(("queued", "processing")))).all():
+            r.status, r.stage, r.progress = "queued", None, 0.0
+            jobs.append(("render", r.id))
+        db.commit()
+    finally:
+        db.close()
+    return jobs

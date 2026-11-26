@@ -1,0 +1,17 @@
+[project]
+name = "autoedit-brand"
+version = "0.1.0"
+description = "Source intake for motion graphics: safe website fetch, brand kit and fact extraction, image palettes"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "pillow>=10.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autoedit_brand"]

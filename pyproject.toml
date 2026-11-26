@@ -7,6 +7,9 @@ dependencies = [
     "autoedit-schemas",
     "autoedit-pipeline",
     "autoedit-api",
+    "autoedit-brand",
+    "autoedit-motion",
+    "autoedit-render",
 ]
 
 [dependency-groups]
@@ -33,12 +36,15 @@ override-dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/schemas", "packages/pipeline", "apps/api"]
+members = ["packages/schemas", "packages/pipeline", "packages/brand", "packages/motion", "packages/render", "apps/api"]
 
 [tool.uv.sources]
 autoedit-schemas = { workspace = true }
 autoedit-pipeline = { workspace = true }
 autoedit-api = { workspace = true }
+autoedit-brand = { workspace = true }
+autoedit-motion = { workspace = true }
+autoedit-render = { workspace = true }
 
 [tool.ruff]
 line-length = 110
@@ -54,7 +60,7 @@ ignore = ["RUF012", "B008", "N818", "E501"]
 "**/cli.py" = ["RUF001"]  # en dash and multiplication sign are deliberate in terminal tables
 
 [tool.ruff.lint.isort]
-known-first-party = ["autoedit_schemas", "autoedit_pipeline", "autoedit_api"]
+known-first-party = ["autoedit_schemas", "autoedit_pipeline", "autoedit_api", "autoedit_brand", "autoedit_motion", "autoedit_render"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -65,11 +71,11 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 check_untyped_defs = true
 ignore_missing_imports = true
-mypy_path = ["packages/schemas/src", "packages/pipeline/src", "apps/api/src"]
+mypy_path = ["packages/schemas/src", "packages/pipeline/src", "packages/brand/src", "packages/motion/src", "packages/render/src", "apps/api/src"]
 explicit_package_bases = true
 
 [tool.pytest.ini_options]
-testpaths = ["packages/schemas/tests", "packages/pipeline/tests", "apps/api/tests"]
+testpaths = ["packages/schemas/tests", "packages/pipeline/tests", "packages/brand/tests", "packages/motion/tests", "packages/render/tests", "apps/api/tests"]
 addopts = "-ra --import-mode=importlib"
 markers = [
     "slow: exercises real media decoding (still runs in CI, a few seconds each)",

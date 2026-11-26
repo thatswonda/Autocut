@@ -36,6 +36,7 @@ class CompositionMeta(StrictModel):
     language: str = Field(default="en", max_length=16)
     style: str = Field(default="bold_modern", max_length=64)
     goal: Literal["promo", "product_launch", "explainer", "ad", "other"] = "promo"
+    summary: str = Field(default="", max_length=600, description="One-paragraph creative rationale")
 
 
 class BrandColors(StrictModel):
@@ -66,10 +67,19 @@ class Claim(StrictModel):
     source: str = Field(min_length=1, max_length=500, description="e.g. 'website:/pricing' or 'prompt'")
 
 
+class Stat(StrictModel):
+    value: str = Field(min_length=1, max_length=24, description="e.g. '10,000+', '4.9', '24/7'")
+    label: str = Field(default="", max_length=60)
+
+
 class SceneContent(StrictModel):
+    kicker: str = Field(default="", max_length=60, description="Small line above the headline")
     headline: str = Field(default="", max_length=200)
     subtext: str = Field(default="", max_length=500)
     items: list[str] = Field(default_factory=list, max_length=8)
+    stats: list[Stat] = Field(default_factory=list, max_length=4)
+    price: str = Field(default="", max_length=40)
+    cta: str = Field(default="", max_length=40, description="Button text on CTA scenes")
     assets: list[Identifier] = Field(default_factory=list)
 
 

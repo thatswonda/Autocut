@@ -22,6 +22,7 @@ from sqlalchemy import text
 
 from autoedit_pipeline import __version__ as pipeline_version
 from autoedit_pipeline.media import require_binaries
+from autoedit_motion.storyboard import ai_available
 from autoedit_pipeline.plans import billing_enabled
 
 from . import __version__
@@ -29,7 +30,7 @@ from .db import create_all, get_engine
 from .deps import CurrentUser, DbSession
 from .logging import configure_logging
 from .queue import ping
-from .routes import projects, uploads
+from .routes import media, projects, uploads
 from .schemas import ApiError, ErrorEnvelope, MeOut
 from .services import limits_for, limits_out, projects_this_month
 from .settings import get_settings
@@ -60,14 +61,14 @@ async def lifespan(_app: FastAPI) -> Any:
     if settings.database_url.startswith("sqlite"):
         create_all()  # Postgres is migrated by Alembic before the app starts
     if settings.queue_mode == "process":
-        from .jobs import unfinished_clip_ids
-        from .queue import enqueue_clip_analysis
+        from .jobs import unfinished_jobs
+        from .queue import enqueue
 
-        pending = unfinished_clip_ids()
-        for clip_id in pending:
-            enqueue_clip_analysis(clip_id)
+        pending = unfinished_jobs()
+        for kind, obj_id in pending:
+            enqueue(kind, obj_id)
         if pending:
-            log.info("resumed unfinished analyses", extra={"count": len(pending)})
+            log.info("resumed unfinished jobs", extra={"count": len(pending)})
         threading.Thread(target=_daily_purge, name="purge", daemon=True).start()
     log.info("api started", extra={"env": settings.env, "queue": settings.queue_mode})
     yield
@@ -178,12 +179,14 @@ def create_app() -> FastAPI:
             id=user.id,
             plan=limits.name,
             billing_enabled=billing_enabled(),
+            ai_enabled=ai_available(),
             limits=limits_out(limits),
             projects_this_month=projects_this_month(db, user),
         )
 
     app.include_router(uploads.router)
     app.include_router(projects.router)
+    app.include_router(media.router)
     # The web app (interim test UI until the M9 Next.js app) is served last so API routes win.
     app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")
     return app

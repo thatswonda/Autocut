@@ -4,20 +4,33 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy import select
 
+from autoedit_motion.styles import get_style
 from autoedit_pipeline.plans import billing_enabled
 
-from ..db import Project, session_scope
+from ..db import Asset, MotionPlan, Project, session_scope
 from ..deps import CurrentUser, DbSession
-from ..queue import enqueue_clip_analysis
-from ..schemas import ApiError, ClipAdd, ClipOrder, ClipOut, ProjectCreate, ProjectList, ProjectOut
+from ..queue import enqueue, enqueue_clip_analysis
+from ..schemas import (
+    ApiError,
+    ClipAdd,
+    ClipOrder,
+    ClipOut,
+    EditOptions,
+    MotionOptions,
+    ProjectCreate,
+    ProjectList,
+    ProjectOut,
+)
 from ..services import (
     add_clips,
     artifact,
@@ -29,6 +42,7 @@ from ..services import (
     limits_for,
     project_out,
     project_status,
+    SETTLED,
     project_summary,
     projects_this_month,
     remove_clip,
@@ -48,13 +62,21 @@ def _dispatch(background: BackgroundTasks, clip_ids: list[str]) -> None:
 def create_project(
     body: ProjectCreate, db: DbSession, user: CurrentUser, background: BackgroundTasks
 ) -> ProjectOut:
+    try:
+        options = (MotionOptions if body.mode == "motion" else EditOptions).model_validate(body.options)
+    except ValidationError as exc:
+        raise ApiError(422, "invalid_options", "Some settings are not valid",
+                       errors=[e["msg"] for e in exc.errors()]) from exc  # fmt: skip
     if body.mode == "motion":
-        raise ApiError(
-            409,
-            "mode_not_available",
-            "Make motion graphics is coming soon. Use Edit video for now.",
-            available_modes=["edit"],
-        )
+        if not body.brand_authorized:
+            raise ApiError(
+                422, "brand_authorization_required",
+                "Confirm that you own or are authorized to use this brand and its assets.",
+            )  # fmt: skip
+        if not (body.source_urls or body.asset_ids or body.prompt.strip()):
+            raise ApiError(422, "nothing_to_work_with", "Add a website link, some images, or describe the business.")
+        if isinstance(options, MotionOptions) and get_style(options.style).key != options.style:
+            raise ApiError(422, "unknown_style", f"Unknown motion style '{options.style}'")
     limits = limits_for(user)
     if (
         limits.projects_per_month is not None
@@ -72,15 +94,28 @@ def create_project(
         mode=body.mode,
         title=body.title,
         prompt=body.prompt,
-        options=body.options.model_dump(),
+        options=options.model_dump(),
     )
     db.add(project)
     db.flush()
+    if body.mode == "motion":
+        assets = db.scalars(select(Asset).where(Asset.id.in_(body.asset_ids), Asset.user_id == user.id)).all()
+        if len(assets) != len(set(body.asset_ids)):
+            raise ApiError(404, "asset_not_found", "One of the images was not found. Add it again.")
+        for a in assets:
+            a.project_id = project.id
+        db.add(MotionPlan(project_id=project.id, status="queued",
+                          source_urls={"urls": body.source_urls, "asset_ids": body.asset_ids},
+                          brand_authorized_at=datetime.now(UTC)))  # fmt: skip
+        db.commit()
+        background.add_task(enqueue, "motion_plan", project.id)
+        db.refresh(project)
+        return project_out(project, user, db)
     new = add_clips(db, user, project, body.upload_ids) if body.upload_ids else []
     db.commit()
     _dispatch(background, [c.id for c in new])
     db.refresh(project)
-    return project_out(project, user)
+    return project_out(project, user, db)
 
 
 @router.get("", response_model=ProjectList)
@@ -106,7 +141,7 @@ def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectOut)
 def read_project(project_id: str, db: DbSession, user: CurrentUser) -> ProjectOut:
-    return project_out(get_project(db, user, project_id), user)
+    return project_out(get_project(db, user, project_id), user, db)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -148,7 +183,7 @@ def order_clips(project_id: str, body: ClipOrder, db: DbSession, user: CurrentUs
     reorder_clips(project, body.clip_ids)
     db.commit()
     db.refresh(project)
-    return project_out(project, user)
+    return project_out(project, user, db)
 
 
 @router.post("/{project_id}/clips/{clip_id}/retry", response_model=ClipOut)
@@ -204,8 +239,8 @@ async def project_events(project_id: str, request: Request, user: CurrentUser) -
         try:
             u = get_or_create_user(db, user_id)
             project = get_project(db, u, project_id)
-            out = project_out(project, u)
-            settled = project_status(project)[0] in {"ready", "failed", "partial", "empty"}
+            out = project_out(project, u, db)
+            settled = project_status(project)[0] in SETTLED
             return out.model_dump_json(), settled
         finally:
             db.close()
