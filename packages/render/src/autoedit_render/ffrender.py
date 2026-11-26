@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from autoedit_pipeline.media import probe
+from autoedit_pipeline.media import FF_DECODE, FF_X264, probe
 from autoedit_schemas.edl import EDL
 from autoedit_schemas.signals import Signals
 
@@ -128,9 +128,9 @@ def _encode_piece(src: Path, out: Path, *, t_in: float | None, t_out: float | No
         amap = ["-map", "1:a"]
         graph = chain
     cmd = [
-        FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *inputs,
+        FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *FF_DECODE, *inputs,
         "-filter_complex", graph, "-map", "[v]", *amap,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", str(FPS),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", *FF_X264, "-r", str(FPS),
         "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-shortest", str(out),
     ]  # fmt: skip
     _run(cmd, "segment render")
@@ -213,17 +213,17 @@ def cut_clip(src: Path, out: Path, t_in: float, t_out: float) -> float:
     dur = max(0.2, min(t_out, info.duration_s) - max(0.0, t_in))
     out.parent.mkdir(parents=True, exist_ok=True)
     amap = ["-map", "0:a:0"] if info.has_audio else []
-    _run([FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{max(0.0, t_in):.3f}",
-          "-t", f"{dur:.3f}", "-i", str(src), "-map", "0:v:0", *amap, "-c:v", "libx264", "-preset", "veryfast",
-          "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out)],
+    _run([FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *FF_DECODE,
+          "-ss", f"{max(0.0, t_in):.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-map", "0:v:0", *amap,
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", *FF_X264, "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out)],
          "template cut")  # fmt: skip
     return dur
 
 
 def poster(src: Path, out: Path, t: float = 0.5) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
-    _run([FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{t:.2f}", "-i", str(src),
-          "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "4", str(out)], "poster")  # fmt: skip
+    _run([FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *FF_DECODE, "-ss", f"{t:.2f}",
+          "-i", str(src), "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "4", str(out)], "poster")  # fmt: skip
     return out
 
 

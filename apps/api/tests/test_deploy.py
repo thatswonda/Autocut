@@ -102,3 +102,36 @@ def test_crashed_child_is_reported(make_client, short_clip: Path) -> None:  # ty
     assert clip is not None and clip.status == "failed" and clip.error_code == "out_of_memory"
     db.close()
     assert unfinished_clip_ids() == []
+
+
+def test_job_that_keeps_killing_the_server_is_not_resumed_forever(make_client, short_clip: Path) -> None:  # type: ignore[no-untyped-def]
+    c = make_client(AUTOEDIT_QUEUE_MODE="inline")
+    import autoedit_api.queue as q
+    import autoedit_api.routes.projects as routes
+    from autoedit_api.db import ProjectClip, session_scope
+
+    up = upload_file(c, short_clip)
+    real = routes.enqueue_clip_analysis
+    routes.enqueue_clip_analysis = lambda _cid: None  # type: ignore[assignment]
+    try:
+        pid = c.post("/v1/projects", json={"mode": "edit", "upload_ids": [up["id"]]}).json()["id"]
+    finally:
+        routes.enqueue_clip_analysis = real  # type: ignore[assignment]
+    clip_id = c.get(f"/v1/projects/{pid}").json()["clips"][0]["id"]
+
+    started: list[str] = []
+    real_enqueue = q.enqueue
+    q.enqueue = lambda kind, obj_id: started.append(obj_id)  # type: ignore[assignment]
+    try:
+        # Two restarts in a row resume the job; each time it "takes the server down" (no clean exit).
+        assert q.resume("analyze", clip_id) and q.resume("analyze", clip_id)
+        # The third restart gives up and records a clear failure instead of looping.
+        assert not q.resume("analyze", clip_id)
+    finally:
+        q.enqueue = real_enqueue  # type: ignore[assignment]
+    assert started == [clip_id, clip_id]
+    db = session_scope()
+    clip = db.get(ProjectClip, clip_id)
+    assert clip is not None and clip.status == "failed" and clip.error_code == "server_restarted"
+    assert "restarted more than once" in (clip.error or "")
+    db.close()

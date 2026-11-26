@@ -264,6 +264,8 @@ def mark_crashed(clip_id: str, exit_code: int) -> None:
             clip.error = (
                 "The server ran out of memory on this clip. Try a shorter clip or a larger server plan."
             )
+        elif exit_code == -3:
+            clip.error_code, clip.error = _crash_message(exit_code, "this clip's analysis")
         elif exit_code == -1:
             clip.error_code = "timeout"
             clip.error = "Analysis took too long and was stopped."
@@ -301,6 +303,12 @@ def _crash_message(exit_code: int, what: str) -> tuple[str, str]:
         )
     if exit_code == -1:
         return "timeout", f"{what.capitalize()} took too long and was stopped."
+    if exit_code == -3:
+        return (
+            "server_restarted",
+            f"The server restarted more than once during {what}, most likely out of memory. Try a shorter "
+            "video, a lower resolution or a larger server plan, then try again.",
+        )
     return "internal_error", f"{what.capitalize()} stopped unexpectedly (exit code {exit_code}). Try again."
 
 

@@ -62,13 +62,12 @@ async def lifespan(_app: FastAPI) -> Any:
         create_all()  # Postgres is migrated by Alembic before the app starts
     if settings.queue_mode == "process":
         from .jobs import unfinished_jobs
-        from .queue import enqueue
+        from .queue import resume
 
         pending = unfinished_jobs()
-        for kind, obj_id in pending:
-            enqueue(kind, obj_id)
+        resumed = sum(resume(kind, obj_id) for kind, obj_id in pending)
         if pending:
-            log.info("resumed unfinished jobs", extra={"count": len(pending)})
+            log.info("resumed unfinished jobs", extra={"count": resumed, "given_up": len(pending) - resumed})
         threading.Thread(target=_daily_purge, name="purge", daemon=True).start()
     log.info("api started", extra={"env": settings.env, "queue": settings.queue_mode})
     yield

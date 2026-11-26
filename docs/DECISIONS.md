@@ -70,6 +70,8 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-407 | **Color grades** are FFmpeg filter chains with a CSS approximation for previews (natural, warm cinematic, teal & orange, moody film, clean bright, vintage, black & white, vibrant pop). Chosen in the prompt box before sending. | Owner asked for grade templates picked up front. |
 | D-408 | **Templates**: any time range of a finished edit or motion render can be saved as an intro or outro and attached to later edits. | Owner asked that parts of made videos become reusable templates. |
 | D-409 | **`AUTOEDIT_FAKE_AI=1`** swaps Claude for a deterministic stand-in (tests, demos without a key). Without a key and without fake mode, motion projects fail with a message telling the owner to add `ANTHROPIC_API_KEY`. | Tests stay free and offline; a missing key is never a silent failure. |
+| D-410 | **Every FFmpeg call caps its threads** (`FF_DECODE`, `FF_X264` in `autoedit_pipeline.media`; decoder threads from `AUTOEDIT_FFMPEG_THREADS`, default 2; one encoder thread; one filter thread). | FFmpeg sizes thread pools from the host's CPU count, not the container's. On Render's many-core hosts one 4K segment needed ~1.7 GB, so an edit killed the 512 MB server (502). Capped: 222 MB at 720p, 304 MB at 1080p, 363 MB analysis, on a 4K clip. |
+| D-411 | **A resumed job gets two tries.** Each resume after a restart is counted on disk (`<data>/resumes/`); a third is refused and the job is marked failed (`server_restarted`) with a clear message. | A job that takes the server down would otherwise be resumed on every restart and keep the site offline. |
 
 ## Deferred, with a home
 

@@ -21,6 +21,14 @@ from autoedit_schemas.media import MediaInfo
 FFMPEG = os.environ.get("AUTOEDIT_FFMPEG", "ffmpeg")
 FFPROBE = os.environ.get("AUTOEDIT_FFPROBE", "ffprobe")
 
+# FFmpeg sizes its thread pools from the host's CPU count, not the container's limit. On a cloud host that
+# reports 32+ cores, one 4K clip then needs ~1.7 GB and a 512 MB server is killed. Cap every pool.
+_DEC_THREADS = os.environ.get("AUTOEDIT_FFMPEG_THREADS", "2")
+FF_DECODE = ["-filter_threads", "1", "-filter_complex_threads", "1", "-threads", _DEC_THREADS]
+"""Put right before an input's ``-i`` (global filter limits plus that input's decoder threads)."""
+FF_X264 = ["-threads", "1", "-x264-params", "rc-lookahead=4:ref=2"]
+"""Put after ``-c:v libx264``: one encoder thread and a short lookahead (~200 MB less per encode)."""
+
 PROXY_SHORT_EDGE = 540
 PROXY_MAX_FPS = 30.0
 
@@ -189,11 +197,11 @@ def make_proxy(src: Path, dst: Path, info: MediaInfo, *, timeout: float = 1800.0
     tmp = dst.with_suffix(".partial.mp4")
     cmd = [
         FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(src),
+        *FF_DECODE, "-i", str(src),
         "-map", "0:v:0", "-map", "0:a:0?",
         # ffmpeg auto-applies rotation metadata, so the proxy is stored upright.
         "-vf", f"fps={fps:.3f},scale={pw}:{ph}:flags=bicubic,setsar=1,format=yuv420p",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", *FF_X264,
         "-g", str(max(1, round(fps * 2))), "-sc_threshold", "0",
         "-c:a", "aac", "-b:a", "96k", "-ac", "2", "-ar", "48000",
         "-movflags", "+faststart",
@@ -233,7 +241,7 @@ def iter_frames(
     pix, channels = ("gray", 1) if gray else ("rgb24", 3)
     cmd = [
         FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error",
-        "-i", str(path),
+        *FF_DECODE, "-i", str(path),
         "-an", "-sn",
         "-vf", f"fps={spec.fps},scale={spec.width}:{spec.height}:flags=area",
         "-f", "rawvideo", "-pix_fmt", pix, "pipe:1",
