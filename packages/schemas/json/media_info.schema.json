@@ -1,0 +1,148 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "container": {
+      "enum": [
+        "mp4",
+        "mov",
+        "mkv",
+        "webm"
+      ],
+      "title": "Container",
+      "type": "string"
+    },
+    "duration_s": {
+      "exclusiveMinimum": 0,
+      "title": "Duration S",
+      "type": "number"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "bitrate_kbps": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bitrate Kbps"
+    },
+    "width": {
+      "exclusiveMinimum": 0,
+      "title": "Width",
+      "type": "integer"
+    },
+    "height": {
+      "exclusiveMinimum": 0,
+      "title": "Height",
+      "type": "integer"
+    },
+    "rotation": {
+      "default": 0,
+      "enum": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "title": "Rotation",
+      "type": "integer"
+    },
+    "display_width": {
+      "exclusiveMinimum": 0,
+      "title": "Display Width",
+      "type": "integer"
+    },
+    "display_height": {
+      "exclusiveMinimum": 0,
+      "title": "Display Height",
+      "type": "integer"
+    },
+    "fps": {
+      "exclusiveMinimum": 0,
+      "title": "Fps",
+      "type": "number"
+    },
+    "variable_frame_rate": {
+      "default": false,
+      "title": "Variable Frame Rate",
+      "type": "boolean"
+    },
+    "video_codec": {
+      "title": "Video Codec",
+      "type": "string"
+    },
+    "pixel_format": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pixel Format"
+    },
+    "has_audio": {
+      "title": "Has Audio",
+      "type": "boolean"
+    },
+    "audio_codec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Codec"
+    },
+    "audio_sample_rate": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Sample Rate"
+    },
+    "audio_channels": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Channels"
+    }
+  },
+  "required": [
+    "container",
+    "duration_s",
+    "size_bytes",
+    "width",
+    "height",
+    "display_width",
+    "display_height",
+    "fps",
+    "video_codec",
+    "has_audio"
+  ],
+  "title": "MediaInfo",
+  "type": "object"
+}

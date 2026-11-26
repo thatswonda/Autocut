@@ -1,0 +1,579 @@
+{
+  "$defs": {
+    "Animation": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "default": "fade",
+          "maxLength": 32,
+          "title": "In",
+          "type": "string"
+        },
+        "out": {
+          "default": "fade",
+          "maxLength": 32,
+          "title": "Out",
+          "type": "string"
+        },
+        "easing": {
+          "default": "ease_out",
+          "enum": [
+            "linear",
+            "ease_in",
+            "ease_out",
+            "ease_in_out",
+            "spring"
+          ],
+          "title": "Easing",
+          "type": "string"
+        }
+      },
+      "title": "Animation",
+      "type": "object"
+    },
+    "Aspect": {
+      "enum": [
+        "9:16",
+        "1:1",
+        "16:9",
+        "4:5"
+      ],
+      "title": "Aspect",
+      "type": "string"
+    },
+    "Brand": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "logo_asset": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logo Asset"
+        },
+        "colors": {
+          "$ref": "#/$defs/BrandColors"
+        },
+        "fonts": {
+          "$ref": "#/$defs/BrandFonts"
+        },
+        "tone": {
+          "default": "friendly",
+          "maxLength": 64,
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "title": "Brand",
+      "type": "object"
+    },
+    "BrandColors": {
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "default": "#000000",
+          "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+          "title": "Primary",
+          "type": "string"
+        },
+        "secondary": {
+          "default": "#444444",
+          "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+          "title": "Secondary",
+          "type": "string"
+        },
+        "accent": {
+          "default": "#FF5A1F",
+          "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+          "title": "Accent",
+          "type": "string"
+        },
+        "background": {
+          "default": "#FFFFFF",
+          "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+          "title": "Background",
+          "type": "string"
+        },
+        "text": {
+          "default": "#111111",
+          "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "BrandColors",
+      "type": "object"
+    },
+    "BrandFonts": {
+      "additionalProperties": false,
+      "properties": {
+        "heading": {
+          "default": "Inter",
+          "maxLength": 100,
+          "title": "Heading",
+          "type": "string"
+        },
+        "body": {
+          "default": "Inter",
+          "maxLength": 100,
+          "title": "Body",
+          "type": "string"
+        }
+      },
+      "title": "BrandFonts",
+      "type": "object"
+    },
+    "Claim": {
+      "additionalProperties": false,
+      "description": "A factual statement shown on screen. ``source`` is mandatory: unsourced claims are invalid.",
+      "properties": {
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "source": {
+          "description": "e.g. 'website:/pricing' or 'prompt'",
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "CompositionAudio": {
+      "additionalProperties": false,
+      "properties": {
+        "music": {
+          "$ref": "#/$defs/CompositionMusic"
+        },
+        "sfx": {
+          "items": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "title": "Sfx",
+          "type": "array"
+        },
+        "normalize_lufs": {
+          "default": -14.0,
+          "maximum": -5.0,
+          "minimum": -31.0,
+          "title": "Normalize Lufs",
+          "type": "number"
+        }
+      },
+      "title": "CompositionAudio",
+      "type": "object"
+    },
+    "CompositionCaptions": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "style": {
+          "default": "word_pop",
+          "maxLength": 64,
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "title": "CompositionCaptions",
+      "type": "object"
+    },
+    "CompositionMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Title",
+          "type": "string"
+        },
+        "aspect": {
+          "$ref": "#/$defs/Aspect",
+          "default": "9:16"
+        },
+        "duration_s": {
+          "default": 30.0,
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "fps": {
+          "default": 30,
+          "enum": [
+            24,
+            25,
+            30,
+            50,
+            60
+          ],
+          "title": "Fps",
+          "type": "integer"
+        },
+        "language": {
+          "default": "en",
+          "maxLength": 16,
+          "title": "Language",
+          "type": "string"
+        },
+        "style": {
+          "default": "bold_modern",
+          "maxLength": 64,
+          "title": "Style",
+          "type": "string"
+        },
+        "goal": {
+          "default": "promo",
+          "enum": [
+            "promo",
+            "product_launch",
+            "explainer",
+            "ad",
+            "other"
+          ],
+          "title": "Goal",
+          "type": "string"
+        }
+      },
+      "title": "CompositionMeta",
+      "type": "object"
+    },
+    "CompositionMusic": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "mood": {
+          "default": "upbeat",
+          "maxLength": 64,
+          "title": "Mood",
+          "type": "string"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "duck_under_voiceover": {
+          "default": true,
+          "title": "Duck Under Voiceover",
+          "type": "boolean"
+        }
+      },
+      "title": "CompositionMusic",
+      "type": "object"
+    },
+    "Scene": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_\\-:.]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "template": {
+          "enum": [
+            "kinetic_text",
+            "product_reveal",
+            "device_mockup",
+            "feature_list",
+            "stats_counter",
+            "testimonial_card",
+            "price_offer",
+            "logo_sting",
+            "cta_end_card",
+            "footage"
+          ],
+          "title": "Template",
+          "type": "string"
+        },
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "content": {
+          "$ref": "#/$defs/SceneContent"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "title": "Claims",
+          "type": "array"
+        },
+        "animation": {
+          "$ref": "#/$defs/Animation"
+        },
+        "transition_out": {
+          "$ref": "#/$defs/SceneTransition"
+        },
+        "clip_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clip Id"
+        },
+        "src_in": {
+          "anyOf": [
+            {
+              "description": "Seconds, >= 0",
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Src In"
+        },
+        "src_out": {
+          "anyOf": [
+            {
+              "description": "Seconds, > 0",
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Src Out"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "template",
+        "t_in",
+        "t_out"
+      ],
+      "title": "Scene",
+      "type": "object"
+    },
+    "SceneContent": {
+      "additionalProperties": false,
+      "properties": {
+        "headline": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Headline",
+          "type": "string"
+        },
+        "subtext": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Subtext",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Items",
+          "type": "array"
+        },
+        "assets": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_\\-:.]+$",
+            "type": "string"
+          },
+          "title": "Assets",
+          "type": "array"
+        }
+      },
+      "title": "SceneContent",
+      "type": "object"
+    },
+    "SceneTransition": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "default": "cut",
+          "enum": [
+            "cut",
+            "fade",
+            "wipe",
+            "slide",
+            "zoom"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "description": "Seconds, >= 0",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        }
+      },
+      "title": "SceneTransition",
+      "type": "object"
+    },
+    "VoiceLine": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "text": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t_in",
+        "text"
+      ],
+      "title": "VoiceLine",
+      "type": "object"
+    },
+    "Voiceover": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "voice": {
+          "default": "",
+          "maxLength": 100,
+          "title": "Voice",
+          "type": "string"
+        },
+        "script": {
+          "items": {
+            "$ref": "#/$defs/VoiceLine"
+          },
+          "title": "Script",
+          "type": "array"
+        }
+      },
+      "title": "Voiceover",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "meta": {
+      "$ref": "#/$defs/CompositionMeta"
+    },
+    "brand": {
+      "$ref": "#/$defs/Brand"
+    },
+    "scenes": {
+      "items": {
+        "$ref": "#/$defs/Scene"
+      },
+      "minItems": 1,
+      "title": "Scenes",
+      "type": "array"
+    },
+    "voiceover": {
+      "$ref": "#/$defs/Voiceover"
+    },
+    "captions": {
+      "$ref": "#/$defs/CompositionCaptions"
+    },
+    "audio": {
+      "$ref": "#/$defs/CompositionAudio"
+    }
+  },
+  "required": [
+    "scenes"
+  ],
+  "title": "Composition",
+  "type": "object"
+}

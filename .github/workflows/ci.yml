@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy packages/schemas/src packages/pipeline/src apps/api/src
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: ci, POSTGRES_PASSWORD: ci, POSTGRES_DB: autoedit_it }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U ci" --health-interval 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 3s --health-retries 20
+    env:
+      AUTOEDIT_MODELS_DIR: ${{ github.workspace }}/.models
+      AUTOEDIT_IT_DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/autoedit_it
+      AUTOEDIT_IT_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng libegl1 libgles2
+      - uses: astral-sh/setup-uv@v4
+        with: { enable-cache: true }
+      - uses: actions/cache@v4
+        with:
+          path: .models
+          key: mediapipe-models-v1
+      - run: uv sync --frozen
+      - run: uv run autoedit models download
+      - name: Migrations apply cleanly
+        run: uv run python -m autoedit_api.manage migrate
+        env:
+          AUTOEDIT_DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/autoedit_it
+      - name: Tests (unit, media regression, API, Postgres/Redis integration)
+        run: uv run pytest --cov=autoedit_schemas --cov=autoedit_pipeline --cov=autoedit_api --cov-report=term-missing:skip-covered
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          push: false
+          tags: autoedit:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

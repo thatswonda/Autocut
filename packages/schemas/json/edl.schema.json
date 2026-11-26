@@ -1,0 +1,774 @@
+{
+  "$defs": {
+    "Aspect": {
+      "enum": [
+        "9:16",
+        "1:1",
+        "16:9",
+        "4:5"
+      ],
+      "title": "Aspect",
+      "type": "string"
+    },
+    "Audio": {
+      "additionalProperties": false,
+      "properties": {
+        "music": {
+          "$ref": "#/$defs/Music"
+        },
+        "sfx": {
+          "items": {
+            "$ref": "#/$defs/Sfx"
+          },
+          "title": "Sfx",
+          "type": "array"
+        },
+        "normalize_lufs": {
+          "default": -14.0,
+          "maximum": -5.0,
+          "minimum": -31.0,
+          "title": "Normalize Lufs",
+          "type": "number"
+        },
+        "denoise": {
+          "default": true,
+          "title": "Denoise",
+          "type": "boolean"
+        }
+      },
+      "title": "Audio",
+      "type": "object"
+    },
+    "BRoll": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "source": {
+          "default": "pexels",
+          "enum": [
+            "pexels",
+            "pixabay",
+            "user",
+            "project_clip"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out",
+        "query"
+      ],
+      "title": "BRoll",
+      "type": "object"
+    },
+    "CaptionWord": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "text": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "emphasis": {
+          "default": false,
+          "title": "Emphasis",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out",
+        "text"
+      ],
+      "title": "CaptionWord",
+      "type": "object"
+    },
+    "Captions": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "style": {
+          "default": "word_pop",
+          "maxLength": 64,
+          "title": "Style",
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "maxLength": 16,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "words": {
+          "items": {
+            "$ref": "#/$defs/CaptionWord"
+          },
+          "title": "Words",
+          "type": "array"
+        }
+      },
+      "title": "Captions",
+      "type": "object"
+    },
+    "ClipRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_\\-:.]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "order": {
+          "minimum": 1,
+          "title": "Order",
+          "type": "integer"
+        },
+        "duration_s": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "order",
+        "duration_s"
+      ],
+      "title": "ClipRef",
+      "type": "object"
+    },
+    "Color": {
+      "additionalProperties": false,
+      "properties": {
+        "preset": {
+          "default": "none",
+          "maxLength": 64,
+          "title": "Preset",
+          "type": "string"
+        },
+        "exposure": {
+          "default": 0.0,
+          "maximum": 100.0,
+          "minimum": -100.0,
+          "title": "Exposure",
+          "type": "number"
+        },
+        "contrast": {
+          "default": 0.0,
+          "maximum": 100.0,
+          "minimum": -100.0,
+          "title": "Contrast",
+          "type": "number"
+        },
+        "saturation": {
+          "default": 0.0,
+          "maximum": 100.0,
+          "minimum": -100.0,
+          "title": "Saturation",
+          "type": "number"
+        },
+        "temperature": {
+          "default": 0.0,
+          "maximum": 100.0,
+          "minimum": -100.0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "lut": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lut"
+        }
+      },
+      "title": "Color",
+      "type": "object"
+    },
+    "Effect": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/$defs/EffectType"
+        },
+        "params": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "title": "Params",
+          "type": "object"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out",
+        "type"
+      ],
+      "title": "Effect",
+      "type": "object"
+    },
+    "EffectType": {
+      "enum": [
+        "punch_zoom",
+        "shake",
+        "slowmo",
+        "freeze",
+        "speed_ramp"
+      ],
+      "title": "EffectType",
+      "type": "string"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Summary",
+          "type": "string"
+        },
+        "aspect": {
+          "$ref": "#/$defs/Aspect",
+          "default": "9:16"
+        },
+        "total_raw_duration_s": {
+          "default": 0.0,
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "Total Raw Duration S",
+          "type": "number"
+        },
+        "target_duration_s": {
+          "anyOf": [
+            {
+              "description": "Seconds, > 0",
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Duration S"
+        },
+        "style": {
+          "default": "energetic",
+          "maxLength": 64,
+          "title": "Style",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "maxLength": 16,
+          "title": "Language",
+          "type": "string"
+        }
+      },
+      "title": "Meta",
+      "type": "object"
+    },
+    "Music": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "mood": {
+          "default": "upbeat",
+          "maxLength": 64,
+          "title": "Mood",
+          "type": "string"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "duck_under_speech": {
+          "default": true,
+          "title": "Duck Under Speech",
+          "type": "boolean"
+        },
+        "volume_db": {
+          "default": -18.0,
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "title": "Volume Db",
+          "type": "number"
+        }
+      },
+      "title": "Music",
+      "type": "object"
+    },
+    "Overlay": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/$defs/OverlayType"
+        },
+        "content": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Content",
+          "type": "string"
+        },
+        "position": {
+          "default": "bottom",
+          "enum": [
+            "top",
+            "center",
+            "bottom",
+            "top_left",
+            "top_right",
+            "bottom_left",
+            "bottom_right"
+          ],
+          "title": "Position",
+          "type": "string"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out",
+        "type"
+      ],
+      "title": "Overlay",
+      "type": "object"
+    },
+    "OverlayType": {
+      "enum": [
+        "text",
+        "lower_third",
+        "emoji",
+        "arrow",
+        "logo"
+      ],
+      "title": "OverlayType",
+      "type": "string"
+    },
+    "RemovedRange": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_\\-:.]+$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "src_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "Src In",
+          "type": "number"
+        },
+        "src_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "Src Out",
+          "type": "number"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clip_id",
+        "src_in",
+        "src_out"
+      ],
+      "title": "RemovedRange",
+      "type": "object"
+    },
+    "Segment": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_\\-:.]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "clip_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_\\-:.]+$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "src_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "Src In",
+          "type": "number"
+        },
+        "src_out": {
+          "description": "Seconds, > 0",
+          "exclusiveMinimum": 0.0,
+          "title": "Src Out",
+          "type": "number"
+        },
+        "speed": {
+          "default": 1.0,
+          "exclusiveMinimum": 0.1,
+          "maximum": 8.0,
+          "title": "Speed",
+          "type": "number"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "clip_id",
+        "src_in",
+        "src_out"
+      ],
+      "title": "Segment",
+      "type": "object"
+    },
+    "Sfx": {
+      "additionalProperties": false,
+      "properties": {
+        "t": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T",
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/$defs/SfxType"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "type"
+      ],
+      "title": "Sfx",
+      "type": "object"
+    },
+    "SfxType": {
+      "enum": [
+        "whoosh",
+        "impact",
+        "pop",
+        "ding"
+      ],
+      "title": "SfxType",
+      "type": "string"
+    },
+    "Transition": {
+      "additionalProperties": false,
+      "properties": {
+        "between": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            },
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_\\-:.]+$",
+              "type": "string"
+            }
+          ],
+          "title": "Between",
+          "type": "array"
+        },
+        "type": {
+          "$ref": "#/$defs/TransitionType",
+          "default": "cut"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "description": "Seconds, >= 0",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "reason": {
+          "default": "",
+          "description": "Human-readable explanation shown in the UI",
+          "maxLength": 500,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "between"
+      ],
+      "title": "Transition",
+      "type": "object"
+    },
+    "TransitionType": {
+      "enum": [
+        "cut",
+        "crossfade",
+        "whip",
+        "zoom"
+      ],
+      "title": "TransitionType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "meta": {
+      "$ref": "#/$defs/Meta"
+    },
+    "clips": {
+      "items": {
+        "$ref": "#/$defs/ClipRef"
+      },
+      "minItems": 1,
+      "title": "Clips",
+      "type": "array"
+    },
+    "segments": {
+      "items": {
+        "$ref": "#/$defs/Segment"
+      },
+      "minItems": 1,
+      "title": "Segments",
+      "type": "array"
+    },
+    "removed": {
+      "items": {
+        "$ref": "#/$defs/RemovedRange"
+      },
+      "title": "Removed",
+      "type": "array"
+    },
+    "transitions": {
+      "items": {
+        "$ref": "#/$defs/Transition"
+      },
+      "title": "Transitions",
+      "type": "array"
+    },
+    "captions": {
+      "$ref": "#/$defs/Captions"
+    },
+    "effects": {
+      "items": {
+        "$ref": "#/$defs/Effect"
+      },
+      "title": "Effects",
+      "type": "array"
+    },
+    "overlays": {
+      "items": {
+        "$ref": "#/$defs/Overlay"
+      },
+      "title": "Overlays",
+      "type": "array"
+    },
+    "broll": {
+      "items": {
+        "$ref": "#/$defs/BRoll"
+      },
+      "title": "Broll",
+      "type": "array"
+    },
+    "audio": {
+      "$ref": "#/$defs/Audio"
+    },
+    "color": {
+      "$ref": "#/$defs/Color"
+    }
+  },
+  "required": [
+    "clips",
+    "segments"
+  ],
+  "title": "EDL",
+  "type": "object"
+}

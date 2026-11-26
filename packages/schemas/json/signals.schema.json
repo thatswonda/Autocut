@@ -1,0 +1,814 @@
+{
+  "$defs": {
+    "AnalysisInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "signals_version": {
+          "default": 1,
+          "title": "Signals Version",
+          "type": "integer"
+        },
+        "pipeline_version": {
+          "title": "Pipeline Version",
+          "type": "string"
+        },
+        "analysis_fps": {
+          "title": "Analysis Fps",
+          "type": "number"
+        },
+        "analysis_width": {
+          "title": "Analysis Width",
+          "type": "integer"
+        },
+        "detectors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Which implementation produced each signal",
+          "title": "Detectors",
+          "type": "object"
+        },
+        "timings_s": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Timings S",
+          "type": "object"
+        },
+        "params": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "pipeline_version",
+        "analysis_fps",
+        "analysis_width",
+        "detectors",
+        "timings_s",
+        "params"
+      ],
+      "title": "AnalysisInfo",
+      "type": "object"
+    },
+    "AudioSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "integrated_lufs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Integrated Lufs"
+        },
+        "loudness_range_lu": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Loudness Range Lu"
+        },
+        "peak_dbfs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Peak Dbfs"
+        },
+        "speech_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Speech Ratio",
+          "type": "number"
+        },
+        "music_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Music Ratio",
+          "type": "number"
+        },
+        "tempo_bpm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tempo Bpm"
+        }
+      },
+      "required": [
+        "integrated_lufs",
+        "loudness_range_lu",
+        "peak_dbfs",
+        "speech_ratio",
+        "music_ratio",
+        "tempo_bpm"
+      ],
+      "title": "AudioSummary",
+      "type": "object"
+    },
+    "Box": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "w": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "W",
+          "type": "number"
+        },
+        "h": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "H",
+          "type": "number"
+        },
+        "score": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "title": "Box",
+      "type": "object"
+    },
+    "FlaggedRange": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out",
+        "reason"
+      ],
+      "title": "FlaggedRange",
+      "type": "object"
+    },
+    "MediaInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "container": {
+          "enum": [
+            "mp4",
+            "mov",
+            "mkv",
+            "webm"
+          ],
+          "title": "Container",
+          "type": "string"
+        },
+        "duration_s": {
+          "exclusiveMinimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "bitrate_kbps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bitrate Kbps"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "integer"
+        },
+        "rotation": {
+          "default": 0,
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "title": "Rotation",
+          "type": "integer"
+        },
+        "display_width": {
+          "exclusiveMinimum": 0,
+          "title": "Display Width",
+          "type": "integer"
+        },
+        "display_height": {
+          "exclusiveMinimum": 0,
+          "title": "Display Height",
+          "type": "integer"
+        },
+        "fps": {
+          "exclusiveMinimum": 0,
+          "title": "Fps",
+          "type": "number"
+        },
+        "variable_frame_rate": {
+          "default": false,
+          "title": "Variable Frame Rate",
+          "type": "boolean"
+        },
+        "video_codec": {
+          "title": "Video Codec",
+          "type": "string"
+        },
+        "pixel_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pixel Format"
+        },
+        "has_audio": {
+          "title": "Has Audio",
+          "type": "boolean"
+        },
+        "audio_codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Codec"
+        },
+        "audio_sample_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Sample Rate"
+        },
+        "audio_channels": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Channels"
+        }
+      },
+      "required": [
+        "container",
+        "duration_s",
+        "size_bytes",
+        "width",
+        "height",
+        "display_width",
+        "display_height",
+        "fps",
+        "video_codec",
+        "has_audio"
+      ],
+      "title": "MediaInfo",
+      "type": "object"
+    },
+    "Point": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "Point",
+      "type": "object"
+    },
+    "Range": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out"
+      ],
+      "title": "Range",
+      "type": "object"
+    },
+    "Scene": {
+      "additionalProperties": false,
+      "properties": {
+        "t_in": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T In",
+          "type": "number"
+        },
+        "t_out": {
+          "description": "Seconds, >= 0",
+          "minimum": 0.0,
+          "title": "T Out",
+          "type": "number"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t_in",
+        "t_out",
+        "index"
+      ],
+      "title": "Scene",
+      "type": "object"
+    },
+    "SecondMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "t": {
+          "minimum": 0,
+          "title": "T",
+          "type": "integer"
+        },
+        "motion": {
+          "description": "Share of pixels that changed vs the previous frame",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Motion",
+          "type": "number"
+        },
+        "sharpness": {
+          "description": "Content-normalised detail, 0..1 (sharp ~0.9, blurred <0.75; 0 if flat)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Sharpness",
+          "type": "number"
+        },
+        "blurry": {
+          "title": "Blurry",
+          "type": "boolean"
+        },
+        "shake": {
+          "description": "High-frequency camera jitter, fraction of frame diagonal",
+          "minimum": 0.0,
+          "title": "Shake",
+          "type": "number"
+        },
+        "shaky": {
+          "title": "Shaky",
+          "type": "boolean"
+        },
+        "brightness": {
+          "description": "Mean luma, 0..1",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Brightness",
+          "type": "number"
+        },
+        "exposure": {
+          "enum": [
+            "ok",
+            "under",
+            "over"
+          ],
+          "title": "Exposure",
+          "type": "string"
+        },
+        "black": {
+          "title": "Black",
+          "type": "boolean"
+        },
+        "scene_cut": {
+          "description": "A scene boundary falls inside this second",
+          "title": "Scene Cut",
+          "type": "boolean"
+        },
+        "faces": {
+          "items": {
+            "$ref": "#/$defs/Box"
+          },
+          "maxItems": 5,
+          "title": "Faces",
+          "type": "array"
+        },
+        "person_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Person Count",
+          "type": "integer"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Union of the primary face and body"
+        },
+        "subject_center": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Point"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "loudness_lufs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mean momentary loudness (EBU R128)",
+          "title": "Loudness Lufs"
+        },
+        "silent": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Silent"
+        },
+        "speech": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of voiced 30 ms frames",
+          "title": "Speech"
+        },
+        "music": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Music"
+        },
+        "dead": {
+          "description": "Low motion and no speech (or black)",
+          "title": "Dead",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "t",
+        "motion",
+        "sharpness",
+        "blurry",
+        "shake",
+        "shaky",
+        "brightness",
+        "exposure",
+        "black",
+        "scene_cut",
+        "dead"
+      ],
+      "title": "SecondMetrics",
+      "type": "object"
+    },
+    "Summary": {
+      "additionalProperties": false,
+      "properties": {
+        "dead_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Dead Ratio",
+          "type": "number"
+        },
+        "dead_seconds": {
+          "minimum": 0.0,
+          "title": "Dead Seconds",
+          "type": "number"
+        },
+        "usable_seconds": {
+          "minimum": 0.0,
+          "title": "Usable Seconds",
+          "type": "number"
+        },
+        "video": {
+          "$ref": "#/$defs/VideoSummary"
+        },
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "dead_ratio",
+        "dead_seconds",
+        "usable_seconds",
+        "video",
+        "audio"
+      ],
+      "title": "Summary",
+      "type": "object"
+    },
+    "VideoSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "mean_motion": {
+          "title": "Mean Motion",
+          "type": "number"
+        },
+        "median_sharpness": {
+          "title": "Median Sharpness",
+          "type": "number"
+        },
+        "blurry_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Blurry Ratio",
+          "type": "number"
+        },
+        "shaky_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Shaky Ratio",
+          "type": "number"
+        },
+        "face_ratio": {
+          "description": "Share of seconds with at least one face",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Face Ratio",
+          "type": "number"
+        },
+        "person_ratio": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Person Ratio",
+          "type": "number"
+        },
+        "scene_count": {
+          "title": "Scene Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mean_motion",
+        "median_sharpness",
+        "blurry_ratio",
+        "shaky_ratio",
+        "face_ratio",
+        "person_ratio",
+        "scene_count"
+      ],
+      "title": "VideoSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "clip_id": {
+      "title": "Clip Id",
+      "type": "string"
+    },
+    "source_sha256": {
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "media": {
+      "$ref": "#/$defs/MediaInfo"
+    },
+    "analysis": {
+      "$ref": "#/$defs/AnalysisInfo"
+    },
+    "per_second": {
+      "items": {
+        "$ref": "#/$defs/SecondMetrics"
+      },
+      "title": "Per Second",
+      "type": "array"
+    },
+    "scenes": {
+      "items": {
+        "$ref": "#/$defs/Scene"
+      },
+      "title": "Scenes",
+      "type": "array"
+    },
+    "scene_cuts": {
+      "description": "Times of detected cuts, seconds",
+      "items": {
+        "type": "number"
+      },
+      "title": "Scene Cuts",
+      "type": "array"
+    },
+    "silences": {
+      "items": {
+        "$ref": "#/$defs/Range"
+      },
+      "title": "Silences",
+      "type": "array"
+    },
+    "speech_ranges": {
+      "items": {
+        "$ref": "#/$defs/Range"
+      },
+      "title": "Speech Ranges",
+      "type": "array"
+    },
+    "music_ranges": {
+      "items": {
+        "$ref": "#/$defs/Range"
+      },
+      "title": "Music Ranges",
+      "type": "array"
+    },
+    "beats": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Beats",
+      "type": "array"
+    },
+    "dead_zones": {
+      "items": {
+        "$ref": "#/$defs/FlaggedRange"
+      },
+      "title": "Dead Zones",
+      "type": "array"
+    },
+    "quality_flags": {
+      "description": "Blur, shake, black and exposure problems",
+      "items": {
+        "$ref": "#/$defs/FlaggedRange"
+      },
+      "title": "Quality Flags",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/Summary"
+    }
+  },
+  "required": [
+    "clip_id",
+    "source_sha256",
+    "media",
+    "analysis",
+    "per_second",
+    "scenes",
+    "scene_cuts",
+    "silences",
+    "speech_ranges",
+    "music_ranges",
+    "beats",
+    "dead_zones",
+    "quality_flags",
+    "summary"
+  ],
+  "title": "Signals",
+  "type": "object"
+}

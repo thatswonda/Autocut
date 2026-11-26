@@ -1,0 +1,27 @@
+[project]
+name = "autoedit-pipeline"
+version = "0.1.0"
+description = "AutoEdit analysis pipeline: ingest, probe, proxy, local signals (later: transcribe, vision, story, edl, review)"
+requires-python = ">=3.11"
+dependencies = [
+    "autoedit-schemas",
+    "numpy>=1.26",
+    "opencv-contrib-python-headless>=4.10",
+    "scenedetect>=0.6.4",
+    "mediapipe>=0.10.14",
+    "librosa>=0.10.2",
+    "soundfile>=0.12",
+    "webrtcvad-wheels>=2.0.14",
+    "rich>=13.9",
+    "typer>=0.12",
+]
+
+[project.scripts]
+autoedit = "autoedit_pipeline.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autoedit_pipeline"]
