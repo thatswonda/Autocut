@@ -7,7 +7,7 @@ services:
     dockerfilePath: ./infra/Dockerfile
     dockerContext: .
     region: frankfurt          # closest Render region to West Africa
-    plan: starter              # 512 MB RAM. "standard" (2 GB, 1 CPU) analyzes several times faster.
+    plan: starter              # 512 MB RAM. Motion renders at 1080p need "standard" (2 GB), which also analyzes faster.
     healthCheckPath: /healthz
     autoDeploy: true           # redeploy on every push to main
     disk:
@@ -33,3 +33,5 @@ services:
         value: "false"         # test phase: no payments, no limits beyond 30 min per project
       - key: AUTOEDIT_RETENTION_DAYS
         value: "30"
+      - key: ANTHROPIC_API_KEY
+        sync: false            # Claude writes the motion-graphics storyboards; paste your key in Render

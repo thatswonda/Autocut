@@ -14,7 +14,11 @@ from PIL import Image
 from .conftest import upload_file
 
 pytestmark = pytest.mark.slow
-CHROMIUM = os.environ.get("AUTOEDIT_CHROMIUM_PATH") or shutil.which("chromium")
+CHROMIUM = (
+    os.environ.get("AUTOEDIT_CHROMIUM_PATH")
+    or shutil.which("chromium")
+    or shutil.which("chrome-headless-shell")
+)
 needs_browser = pytest.mark.skipif(not CHROMIUM and not os.environ.get("CI"), reason="no Chromium available")
 
 

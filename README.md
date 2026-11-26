@@ -15,7 +15,10 @@ Full spec: [`docs/PRD.md`](docs/PRD.md) · Decisions: [`docs/DECISIONS.md`](docs
 | **M0** Skeleton: monorepo, schemas (EDL, Composition, signals), Docker, Compose, CI | ✅ done |
 | **M1** Ingest and signals: multi-clip projects, resumable uploads, probe, proxy, total-length limits, local signal pass, `signals.json`, CLI | ✅ done |
 | Web app (interim): start screen, multi-clip upload, live progress, analysis timeline | ✅ usable now |
-| M2 Transcription · M3 Vision + story · M4 EDL + render · … · M18 | next |
+| **Edit video**: AI-style prompt box, color-grade templates, auto edit from signals (cuts dead air, black and empty shots, subject-centred reframe, exposure fix, loudness), intro/outro templates, MP4 download | ✅ usable now (rules-based; AI story editing arrives with M3-M4) |
+| **Motion graphics**: website link and/or images → brand kit → Claude storyboard (facts checked in code) → editable scenes → 1080p/720p MP4; six styles | ✅ usable now (needs `ANTHROPIC_API_KEY`) |
+| **Templates**: save any part of a finished video (edit or motion) as an intro/outro template | ✅ usable now |
+| M2 Transcription · M3 Vision + story · M4 AI EDL · … · M18 | next |
 
 **Test phase:** billing is switched off. Everyone gets the `test` plan: up to 30 minutes of footage per
 project, 20 clips, unlimited projects, no watermark, and no upgrade prompts. No payment provider is
@@ -57,7 +60,9 @@ The repository includes a Render Blueprint (`render.yaml`): one web service plus
 
 1. Sign in at https://dashboard.render.com with GitHub, and allow Render to see the `autocut` repository.
 2. **New** → **Blueprint** → choose `autocut` → Render reads `render.yaml`.
-3. When asked for `AUTOEDIT_ACCESS_PASSWORD`, type the password you want for the app.
+3. When asked for `AUTOEDIT_ACCESS_PASSWORD`, type the password you want for the app. When asked for
+   `ANTHROPIC_API_KEY`, paste your Anthropic key (motion graphics need it; editing works without it).
+   On an existing service: **Environment** → add `ANTHROPIC_API_KEY` → **Save changes**.
 4. **Apply**. The first build takes about 10 minutes. Your link looks like `https://autocut-xxxx.onrender.com`.
 5. Open the link; the browser asks for a username (anything) and the password.
 
@@ -65,6 +70,10 @@ Every push to `main` redeploys automatically. Projects, uploads and results live
 redeploys. Tested under the Starter plan's limits (512 MB, 0.5 CPU): peak memory 363 MB, about 0.55x real
 time (5.5 minutes of footage analyzed in about 3 minutes). Switch the plan to Standard for faster analysis
 and set `AUTOEDIT_SIGNAL_WORKERS=4`.
+
+Motion-graphics rendering measured at 464 MB (720p) and 576 MB (1080p) on top of the ~150 MB server, so
+on Starter it can be stopped for memory: the render then fails with a clear message and the app keeps
+running. **Use the Standard plan (2 GB) for motion graphics.** Editing videos fits Starter.
 
 ### Use the web app on your own computer
 

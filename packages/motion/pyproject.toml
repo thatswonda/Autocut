@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "autoedit-schemas",
     "autoedit-brand",
-    "playwright>=1.48",
     "anthropic>=0.70",
 ]
 

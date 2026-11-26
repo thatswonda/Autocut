@@ -19,7 +19,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff format --check .
       - run: uv run ruff check .
-      - run: uv run mypy packages/schemas/src packages/pipeline/src apps/api/src
+      - run: uv run mypy packages/schemas/src packages/pipeline/src packages/brand/src packages/motion/src packages/render/src apps/api/src
 
   test:
     runs-on: ubuntu-latest

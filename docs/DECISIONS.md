@@ -57,6 +57,20 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-305 | **Container entrypoint** chowns the data directory then drops to the unprivileged user; `PORT` honoured; `NUMBA_CACHE_DIR` and `HOME` set for the app user; no BuildKit-only Dockerfile features. | Found while testing under Render-like conditions: mounted disks arrive root-owned, and librosa's numba cache failed on music clips when the package directory is read-only. |
 | D-306 | **Daily retention purge** runs inside the server in process mode. | A single server has no scheduler; the 5 GB disk would otherwise fill. |
 
+## Motion graphics, edit rendering, templates
+
+| # | Decision | Why |
+|---|---|---|
+| D-401 | **Motion engine = HTML/CSS templates + Web Animations, frame-stepped in headless Chrome, piped to FFmpeg.** Every animation is paused and seeked to an exact time per frame (`__seek(t)`), so renders are deterministic and machine-speed independent. Text is fitted to a height budget in the page; contrast is checked; logos sit on plates; RTL works. | Typography and layout quality comes free from the browser; no After Effects or GPU needed; the same page powers previews. |
+| D-402 | **Direct Chrome DevTools Protocol client** (`autoedit_motion/cdp.py`, `--remote-debugging-pipe`) and **Chrome for Testing's headless shell** pinned in the image, instead of Playwright and full Chromium. Encoder runs single-threaded with a short lookahead. | Peak render memory went from 857 MB to 464 MB at 720p. Playwright's Node driver alone was ~135 MB. |
+| D-403 | **Six style presets** (bold_pop, clean_minimal, luxury, tech_grid, warm_friendly, editorial) map brand colors to readable surfaces; Claude chooses content and layout, never raw CSS. | Keeps output on-brand and legible however the model phrases things. |
+| D-404 | **Claude writes the storyboard as a schema-validated Composition; facts are checked in code.** Numbers must appear in the sources or the brief, testimonials must be verbatim, claims carry source ids, length limits are enforced. Invalid output gets one retry with the errors, then fails cleanly. Per-job cost ceiling `AUTOEDIT_MAX_JOB_COST_USD` (default $1). | A business video that invents a price or a review is worse than no video. |
+| D-405 | **Brand intake** fetches only public, global addresses (private IPs blocked, redirects re-checked), respects robots.txt, and requires the user to confirm they own or may use the brand. | Prevents server-side request forgery and passing off. |
+| D-406 | **Edit mode renders from rules over `signals.json` until M3-M4**: cut black, empty and long static shots and long pauses, trim to the target length, crop around the detected subject (blur-fill only with no subject), fix exposure, apply a color grade, normalise to -14 LUFS. | Gives a usable result now; the AI EDL replaces the rules without changing the renderer. |
+| D-407 | **Color grades** are FFmpeg filter chains with a CSS approximation for previews (natural, warm cinematic, teal & orange, moody film, clean bright, vintage, black & white, vibrant pop). Chosen in the prompt box before sending. | Owner asked for grade templates picked up front. |
+| D-408 | **Templates**: any time range of a finished edit or motion render can be saved as an intro or outro and attached to later edits. | Owner asked that parts of made videos become reusable templates. |
+| D-409 | **`AUTOEDIT_FAKE_AI=1`** swaps Claude for a deterministic stand-in (tests, demos without a key). Without a key and without fake mode, motion projects fail with a message telling the owner to add `ANTHROPIC_API_KEY`. | Tests stay free and offline; a missing key is never a silent failure. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |

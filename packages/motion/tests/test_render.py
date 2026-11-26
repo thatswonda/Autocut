@@ -13,7 +13,11 @@ from autoedit_motion.styles import STYLES, contrast, resolve_surface
 from autoedit_pipeline.media import probe
 from autoedit_schemas import Composition, parse_model
 
-CHROMIUM = os.environ.get("AUTOEDIT_CHROMIUM_PATH") or shutil.which("chromium")
+CHROMIUM = (
+    os.environ.get("AUTOEDIT_CHROMIUM_PATH")
+    or shutil.which("chromium")
+    or shutil.which("chrome-headless-shell")
+)
 needs_browser = pytest.mark.skipif(not CHROMIUM and not os.environ.get("CI"), reason="no Chromium available")
 
 
