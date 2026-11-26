@@ -252,7 +252,8 @@ SETTLED = {"empty", "ready", "partial", "failed", "review", "done"}
 
 def asset_out(a: Asset) -> AssetOut:
     return AssetOut(id=a.id, kind=a.kind, filename=a.filename, width=a.width, height=a.height, source=a.source,
-                    url=f"/v1/assets/{a.id}/file")  # fmt: skip
+                    url=f"/v1/assets/{a.id}/file" + ("?poster=1" if a.kind == "video" else ""),
+                    duration_s=a.duration_s)  # fmt: skip
 
 
 def render_out(r: Render) -> RenderOut:

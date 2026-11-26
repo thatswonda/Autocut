@@ -44,10 +44,11 @@ def _image(client: TestClient, kind: str, color: tuple[int, int, int]) -> str:
 
 def _motion_project(client: TestClient, **extra: object) -> dict:
     logo, photo = _image(client, "logo", (232, 93, 4)), _image(client, "photo", (90, 60, 40))
+    extra_ids = list(extra.pop("asset_ids", []))  # type: ignore[call-overload]
     body = {"mode": "motion", "title": "Kora promo",
             "prompt": "Kora Coffee: House Blend is ₦4,500 a bag. Order online.",
             "options": {"aspect": "9:16", "duration_s": 8, "style": "clean_minimal"},
-            "asset_ids": [logo, photo], "brand_authorized": True, **extra}  # fmt: skip
+            "asset_ids": [logo, photo, *extra_ids], "brand_authorized": True, **extra}  # fmt: skip
     r = client.post("/v1/projects", json=body)
     assert r.status_code == 201, r.text
     return client.get(f"/v1/projects/{r.json()['id']}").json()
@@ -129,6 +130,54 @@ def test_motion_render_template_and_reuse(client: TestClient) -> None:
 
     assert client.delete(f"/v1/templates/{tpl['id']}").status_code == 204
     assert client.get("/v1/templates").json() == []
+
+
+@needs_browser
+def test_motion_with_footage_voiceover_and_music(client: TestClient, tmp_path: Path) -> None:
+    clip = tmp_path / "shop.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=25:d=4",
+                    "-pix_fmt", "yuv420p", str(clip)], check=True)  # fmt: skip
+    with clip.open("rb") as fh:
+        v = client.post("/v1/assets", files={"file": ("shop.mp4", fh, "video/mp4")}, data={"kind": "video"})
+    assert v.status_code == 201, v.text
+    assert v.json()["url"].endswith("?poster=1") and v.json()["duration_s"] == pytest.approx(4.0, abs=0.1)
+    assert client.get(v.json()["url"]).headers["content-type"] == "image/jpeg"
+    music = tmp_path / "bed.m4a"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=262:d=2", "-c:a", "aac",
+                    str(music)], check=True)  # fmt: skip
+    with music.open("rb") as fh:
+        m = client.post(
+            "/v1/assets", files={"file": ("bed.m4a", fh, "audio/mp4")}, data={"kind": "music"}
+        ).json()
+
+    p = _motion_project(client, options={"aspect": "9:16", "duration_s": 8, "style": "bold_pop",
+                                         "voiceover": True, "voiceover_captions": True,
+                                         "music_asset_id": m["id"]})  # fmt: skip
+    p = client.get(f"/v1/projects/{p['id']}").json()
+    # The video joins the storyboard as a footage scene; it is not mistaken for a brand image.
+    comp = p["motion"]["composition"]
+    foot = [sc for sc in comp["scenes"] if sc["template"] == "footage"]
+    assert p["motion"]["status"] == "ready", p["motion"]
+    assert len(comp["voiceover"]["script"]) == 3 and comp["voiceover"]["enabled"]
+    # The project was created with the image ids only; add the video the same way the app does.
+    assert foot == [] or foot[0]["clip_id"] == v.json()["id"]
+
+    p2 = _motion_project(client, options={"aspect": "9:16", "duration_s": 8, "style": "bold_pop",
+                                          "voiceover": True, "voiceover_captions": True, "music_asset_id": m["id"]},
+                         asset_ids=[v.json()["id"]])  # fmt: skip
+    comp = client.get(f"/v1/projects/{p2['id']}").json()["motion"]["composition"]
+    assert any(sc["template"] == "footage" for sc in comp["scenes"]), comp["scenes"]
+    r = client.post(f"/v1/projects/{p2['id']}/renders", json={"resolution": 720})
+    assert r.status_code == 201, r.text
+    rnd = client.get(f"/v1/projects/{p2['id']}").json()["renders"][0]
+    assert rnd["status"] == "ready", rnd
+    assert rnd["duration_s"] == pytest.approx(8.0, abs=0.3)
+    out = tmp_path / "out.mp4"
+    out.write_bytes(client.get(rnd["video_url"]).content)
+    vol = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(out), "-af", "volumedetect", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr  # fmt: skip
+    mean = float(vol.split("mean_volume:")[1].split("dB")[0])
+    assert mean > -35, vol[-300:]  # voice and music are audible, not the old silent track
 
 
 def test_edit_render_with_color_grade(client: TestClient, short_clip: Path) -> None:

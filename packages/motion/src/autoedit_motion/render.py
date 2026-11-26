@@ -18,11 +18,41 @@ from pathlib import Path
 from autoedit_schemas.composition import Composition
 
 from .cdp import Browser
-from .page import build_page, output_size
+from .page import FootageFrames, build_page, output_size
 
 log = logging.getLogger(__name__)
 
 FFMPEG = os.environ.get("AUTOEDIT_FFMPEG", "ffmpeg")
+VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".3gp"}
+
+
+def extract_footage(comp: Composition, videos: dict[str, Path], workdir: Path, *, width: int, height: int,
+                    fps: int) -> dict[str, FootageFrames]:  # fmt: skip
+    """JPEG frames for every footage scene, timed to the scene and cropped to fill the frame."""
+    out: dict[str, FootageFrames] = {}
+    for sc in comp.scenes:
+        if sc.template != "footage" or not sc.clip_id or sc.clip_id not in videos:
+            continue
+        assert sc.src_in is not None and sc.src_out is not None
+        scene_s = sc.t_out - sc.t_in + 0.1
+        src_s = max(0.1, sc.src_out - sc.src_in)
+        d = workdir / "footage" / sc.id
+        d.mkdir(parents=True, exist_ok=True)
+        vf = (f"setpts=(PTS-STARTPTS)*{scene_s / src_s:.5f},fps={fps},"
+              f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}")  # fmt: skip
+        proc = subprocess.run(
+            [FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-filter_threads", "1", "-threads", "2",
+             "-ss", f"{sc.src_in:.3f}", "-t", f"{src_s:.3f}", "-i", str(videos[sc.clip_id]), "-an", "-vf", vf,
+             "-q:v", "3", "-start_number", "0", str(d / "%05d.jpg")],
+            capture_output=True, timeout=600, check=False,
+        )  # fmt: skip
+        count = len(list(d.glob("*.jpg")))
+        if proc.returncode != 0 or count == 0:
+            raise RenderError(
+                f"could not read footage for {sc.id}: {proc.stderr.decode('utf-8', 'replace')[-200:]}"
+            )
+        out[sc.id] = FootageFrames(prefix=f"footage/{sc.id}/", count=count, fps=fps)
+    return out
 
 
 class RenderError(RuntimeError):
@@ -59,13 +89,17 @@ def render_composition(
     asset_dir = workdir / "assets"
     asset_dir.mkdir(exist_ok=True)
     urls: dict[str, str] = {}
+    videos = {aid: src for aid, src in assets.items() if src.suffix.lower() in VIDEO_EXT}
     for aid, src in assets.items():
+        if aid in videos:
+            continue
         dst = asset_dir / f"{aid}{src.suffix.lower()}"
         if not dst.exists():
             shutil.copyfile(src, dst)
         urls[aid] = f"assets/{dst.name}"
+    footage = extract_footage(comp, videos, workdir, width=width, height=height, fps=fps)
     page_path = workdir / "index.html"
-    page_path.write_text(build_page(comp, urls), encoding="utf-8")
+    page_path.write_text(build_page(comp, urls, footage), encoding="utf-8")
 
     frames = max(1, round(comp.meta.duration_s * fps))
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -130,3 +164,19 @@ def snapshot(comp: Composition, assets: dict[str, Path], times: list[float], *, 
             page.evaluate(f"window.__seek({t:.4f})")
             shots.append(page.screenshot("png"))
     return shots
+
+
+def layout_warnings(
+    comp: Composition, images: dict[str, Path], *, workdir: Path, short_edge: int = 540
+) -> list[str]:
+    """Lay the storyboard out in the browser and report scenes whose text could not fit at a readable
+    size (self-review, PRD 5.10 step 8). Footage scenes use their poster frame."""
+    width, height = output_size(comp.meta.aspect, short_edge)
+    workdir.mkdir(parents=True, exist_ok=True)
+    urls = {aid: p.resolve().as_uri() for aid, p in images.items()}
+    page_path = workdir / "review.html"
+    page_path.write_text(build_page(comp, urls), encoding="utf-8")
+    with Browser(width, height) as page:
+        page.goto(page_path.resolve().as_uri())
+        found = page.evaluate("window.__ready()") or []
+    return [str(w) for w in found]

@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from autoedit_motion.storyboard import ai_available
 from autoedit_motion.styles import STYLES
+from autoedit_motion.voice import VOICES
 from autoedit_render.presets import COLOR_PRESETS
 from autoedit_schemas import Composition, SchemaValidationError, parse_model
 
@@ -90,6 +91,7 @@ def catalog() -> dict[str, object]:
             for s in STYLES.values()
         ],
         "aspects": ["9:16", "1:1", "4:5", "16:9"],
+        "voices": [{"key": k, "name": v[2]} for k, v in VOICES.items()],
     }
 
 
@@ -105,6 +107,8 @@ async def upload_asset(
 ) -> AssetOut:
     if kind == "music":
         return await _upload_music(db, user, file)
+    if kind == "video":
+        return await _upload_footage(db, user, file)
     if kind not in ("logo", "photo", "screenshot"):
         raise ApiError(422, "bad_kind", "kind must be logo, photo, screenshot or music")
     name = Path(file.filename or "image").name
@@ -170,11 +174,63 @@ async def _upload_music(db: DbSession, user: CurrentUser, file: UploadFile) -> A
     return asset_out(asset)
 
 
+VIDEO_TYPES = {".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".webm": "video/webm"}
+MAX_FOOTAGE_BYTES = 60 * 1024 * 1024
+
+
+async def _upload_footage(db: DbSession, user: CurrentUser, file: UploadFile) -> AssetOut:
+    """A short clip of the business (shop, product in use, team) for footage scenes in motion videos."""
+    name = Path(file.filename or "clip.mp4").name
+    ext = Path(name).suffix.lower()
+    if ext not in VIDEO_TYPES:
+        raise ApiError(415, "unsupported_video", "Clips must be MP4, MOV, M4V or WebM")
+    data = await file.read(MAX_FOOTAGE_BYTES + 1)
+    if len(data) > MAX_FOOTAGE_BYTES:
+        raise ApiError(413, "video_too_large", "Clips for motion videos must be 60 MB or smaller")
+
+    def store() -> Asset:
+        import subprocess
+        import tempfile
+
+        from autoedit_pipeline.media import FFMPEG, MediaError, probe
+
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / f"clip{ext}"
+            src.write_bytes(data)
+            try:
+                info = probe(src)
+            except MediaError as exc:
+                raise ApiError(422, "unreadable_video", "That file could not be read as a video") from exc
+            if info.duration_s > 120:
+                raise ApiError(422, "video_too_long", "Clips for motion videos must be 2 minutes or shorter")
+            poster = Path(td) / "poster.jpg"
+            subprocess.run([FFMPEG, "-nostdin", "-loglevel", "error", "-y", "-ss", f"{min(1.0, info.duration_s / 3):.2f}",
+                            "-i", str(src), "-frames:v", "1", "-vf", "scale='min(960,iw)':-2", "-q:v", "4", str(poster)],
+                           capture_output=True, timeout=60, check=False)  # fmt: skip
+            if not poster.is_file():
+                raise ApiError(422, "unreadable_video", "That file could not be read as a video")
+            aid = new_id("ast")
+            key = f"users/{user.id}/assets/{aid}{ext}"
+            storage = get_storage()
+            storage.put_bytes(key, data, VIDEO_TYPES[ext])
+            storage.put_file(key + ".poster.jpg", poster, "image/jpeg")
+        return Asset(id=aid, user_id=user.id, kind="video", filename=name[:255], content_type=VIDEO_TYPES[ext],
+                     storage_key=key, size_bytes=len(data), width=info.display_width, height=info.display_height,
+                     duration_s=round(info.duration_s, 2), source=f"file:{name[:200]}")  # fmt: skip
+
+    asset = await run_in_threadpool(store)
+    db.add(asset)
+    db.commit()
+    return asset_out(asset)
+
+
 @router.get("/v1/assets/{asset_id}/file", response_model=None)
-def asset_file(asset_id: str, db: DbSession, user: CurrentUser) -> Response:
+def asset_file(asset_id: str, db: DbSession, user: CurrentUser, poster: bool = False) -> Response:
     a = db.get(Asset, asset_id)
     if a is None or a.user_id != user.id:
         raise ApiError(404, "asset_not_found", "Image not found")
+    if a.kind == "video" and poster:
+        return _serve(get_storage(), a.storage_key + ".poster.jpg", "image/jpeg")
     return _serve(get_storage(), a.storage_key, a.content_type or "image/png")
 
 
@@ -202,6 +258,11 @@ def update_composition(
         ) from exc
     known = {a.id for a in db.scalars(select(Asset).where(Asset.project_id == project_id)).all()}
     missing = {a for sc in comp.scenes for a in sc.content.assets if a not in known}
+    missing |= {
+        sc.clip_id
+        for sc in comp.scenes
+        if sc.template == "footage" and sc.clip_id and sc.clip_id not in known
+    }
     if comp.brand.logo_asset and comp.brand.logo_asset not in known:
         missing.add(comp.brand.logo_asset)
     if missing:

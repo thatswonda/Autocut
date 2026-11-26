@@ -48,6 +48,16 @@ class PageSpec:
     scenes: list[dict[str, Any]] = field(default_factory=list)
     anims: list[dict[str, Any]] = field(default_factory=list)
     counters: list[dict[str, Any]] = field(default_factory=list)
+    footage: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FootageFrames:
+    """Pre-extracted frames for one footage scene: ``{prefix}{index:05d}.jpg``, ``count`` of them."""
+
+    prefix: str
+    count: int
+    fps: int
 
 
 def _e(text: str) -> str:
@@ -87,9 +97,11 @@ def _counter(value: str) -> tuple[str, float, int, str] | None:
 
 
 class _Builder:
-    def __init__(self, comp: Composition, assets: dict[str, str]):
+    def __init__(self, comp: Composition, assets: dict[str, str],
+                 footage: dict[str, FootageFrames] | None = None):  # fmt: skip
         self.comp = comp
         self.assets = assets
+        self.footage = footage or {}
         self.style = get_style(comp.meta.style)
         self.spec = PageSpec(duration=comp.meta.duration_s)
         self.colors = comp.brand.colors.model_dump()
@@ -155,7 +167,7 @@ class _Builder:
         t0, dur = sc.t_in, sc.t_out - sc.t_in
         k = min(1.0, dur / 3.0)  # compress entrance offsets in short scenes
         c = sc.content
-        tpl = sc.template if sc.template != "footage" else "product_reveal"
+        tpl = sc.template
         body = getattr(self, f"tpl_{tpl}")(sc, t0, k)
 
         # Shared entrances (selectors only match when the template rendered that element).
@@ -202,6 +214,25 @@ class _Builder:
         return (
             f"{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 15, 5)}"
             f'<div class="bar"></div>{self.text(sc.id, "subtext", c.subtext, 4.8, 3)}'
+        )
+
+    def tpl_footage(self, sc: Scene, t0: float, k: float) -> str:
+        """The business's own clip, full bleed, with copy over a soft scrim. While rendering, the frame
+        for each moment comes from ``FootageFrames``; in previews the clip's poster frame stands in."""
+        c = sc.content
+        frames = self.footage.get(sc.id)
+        poster = self.assets.get(sc.clip_id or "", "")
+        src = f"{frames.prefix}00000.jpg" if frames else poster
+        if frames:
+            self.spec.footage.append({"id": sc.id, "from": sc.t_in, "to": sc.t_out, "prefix": frames.prefix,
+                                      "count": frames.count, "fps": frames.fps})  # fmt: skip
+        self.anim(f"#{sc.id} .footage", "slow_zoom", t0, sc.t_out - t0, easing="linear")
+        img = f'<img class="footage" data-footage="{sc.id}" src="{_e(src)}" alt="">' if src else ""
+        has_copy = bool(c.kicker or c.headline or c.subtext)
+        return (
+            f'<div class="footage-wrap">{img}</div>{"<i class=scrim></i>" if has_copy else ""}'
+            f'<div class="copy">{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 10, 4.5, maxh=24)}'
+            f"{self.text(sc.id, 'subtext', c.subtext, 4.4, 3)}</div>"
         )
 
     def tpl_product_reveal(self, sc: Scene, t0: float, k: float) -> str:
@@ -366,9 +397,12 @@ class _Builder:
         )
 
 
-def build_page(comp: Composition, assets: dict[str, str]) -> str:
-    """``assets`` maps asset ids to URLs relative to the page (or absolute file URLs)."""
-    return _Builder(comp, assets).build()
+def build_page(
+    comp: Composition, assets: dict[str, str], footage: dict[str, FootageFrames] | None = None
+) -> str:
+    """``assets`` maps asset ids to URLs relative to the page (or absolute file URLs); ``footage`` maps
+    footage scene ids to their extracted frames (rendering only)."""
+    return _Builder(comp, assets, footage).build()
 
 
 CSS = r"""
@@ -405,6 +439,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}
 .align-center .bar{transform-origin:center}
 
 /* product reveal */
+.tpl-footage .footage-wrap{position:absolute;inset:0;overflow:hidden;background:#000}.tpl-footage .footage{width:100%;height:100%;object-fit:cover;transform-origin:50% 45%}.tpl-footage .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 38%,rgba(0,0,0,.72) 100%)}.tpl-footage .content{justify-content:flex-end}.tpl-footage .copy{position:relative;display:flex;flex-direction:column;gap:calc(var(--u)*2.4);width:100%;--ink:#fff;color:#fff}.tpl-footage .headline,.tpl-footage .subtext{color:#fff;text-shadow:0 calc(var(--u)*.3) calc(var(--u)*1.2) rgba(0,0,0,.45)}.tpl-footage .bg{display:none}
 .tpl-product_reveal .content{justify-content:flex-end}
 .tpl-product_reveal .media-wrap{position:absolute;left:0;right:0;top:calc(var(--u)*14);height:52%;display:grid;place-items:center}
 .tpl-product_reveal .plate{position:absolute;width:calc(var(--u)*78);height:calc(var(--u)*78);border-radius:50%;background:var(--bg2);opacity:.9}

@@ -79,6 +79,10 @@ def _run_in_child(kind: str, obj_id: str) -> None:
     """Run one job in a fresh Python process; jobs run strictly one at a time (memory stays bounded)."""
     settings = get_settings()
     with _process_lock:
+        if kind == "render":
+            from .jobs_edit import transcribe_before_render
+
+            transcribe_before_render(obj_id)
         try:
             proc = subprocess.run(
                 [sys.executable, "-m", "autoedit_api.manage", "run-job", kind, obj_id],

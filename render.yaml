@@ -33,5 +33,7 @@ services:
         value: "false"         # test phase: no payments, no limits beyond 30 min per project
       - key: AUTOEDIT_RETENTION_DAYS
         value: "30"
+      - key: AUTOEDIT_WHISPER_MODEL
+        value: base            # speech model for captions and cuts; "small" is more accurate (needs Standard)
       - key: ANTHROPIC_API_KEY
-        sync: false            # Claude writes the motion-graphics storyboards; paste your key in Render
+        sync: false            # Claude plans edits and writes motion storyboards; paste your key in Render

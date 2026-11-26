@@ -55,8 +55,31 @@ class FakeClaude:
             {"id": "s4", "template": "cta_end_card", "t_in": d * 0.8, "t_out": d,
              "content": {"headline": "Order today", "cta": "Order now"}, "reason": "CTA"},
         ]  # fmt: skip
+        video = re.search(r"Asset id `([^`]+)` \(video, ([\d.]+) s long", text)
+        if video:
+            vid, vdur = video.group(1), float(video.group(2))
+            scenes[1] = {
+                "id": "s2",
+                "template": "footage",
+                "t_in": d * 0.3,
+                "t_out": d * 0.6,
+                "clip_id": vid,
+                "src_in": 0,
+                "src_out": round(min(vdur, d * 0.3), 2),
+                "content": {"kicker": "In the shop", "headline": "Roasted in front of you"},
+                "transition_out": {"type": "slide", "duration_s": 0.4},
+                "reason": "Real footage",
+            }
         comp = {"version": 1, "meta": {"title": "Test", "summary": "Test storyboard"}, "brand": {"name": "x"},
                 "scenes": scenes}  # fmt: skip
+        if settings.get("voiceover"):
+            comp["voiceover"] = {
+                "script": [
+                    {"t_in": 0.1, "text": "Coffee roasted this morning."},
+                    {"t_in": d * 0.3, "text": "Watch it happen in our shop."},
+                    {"t_in": d * 0.8, "text": "Order yours today."},
+                ]
+            }
         return "```json\n" + json.dumps(comp) + "\n```", []
 
     @staticmethod

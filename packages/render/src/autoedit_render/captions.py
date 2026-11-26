@@ -75,14 +75,15 @@ def group_words(words: list[CaptionWord], *, max_words: int, max_chars: int) -> 
 
 
 def build_ass(words: list[CaptionWord], *, width: int, height: int, style: str = "word_pop",
-              accent: str = "#FFD400") -> str:  # fmt: skip
+              accent: str = "#FFD400", top: bool = False) -> str:  # fmt: skip
     look = LOOKS.get(style, LOOKS["word_pop"])
     size = round(height * look.size if width < height else height * look.size * 1.25)
     vertical = width < height
     max_chars = 18 if vertical else 32
     max_words = 3 if vertical else 6
     outline = max(2, round(height * look.outline)) if look.outline else 0
-    margin_v = round(height * (0.24 if vertical else 0.10))
+    margin_v = round(height * (0.07 if top else 0.24 if vertical else 0.10))
+    align = 8 if top else 2
     margin_h = round(width * 0.08)
     border_style = 3 if look.box else 1
     back = _ass_color("#000000", 0x50) if look.box else _ass_color("#000000", 0x80)
@@ -95,8 +96,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,{look.font},{size},{_ass_color("#FFFFFF")},{_ass_color(accent)},{_ass_color("#000000", 0x10)},{back},-1,0,0,0,100,100,0,0,{border_style},{outline if not look.box else round(size * 0.22)},{0 if look.box else round(size * 0.06)},2,{margin_h},{margin_h},{margin_v},1
-Style: Rtl,Noto Sans Arabic Bold,{size},{_ass_color("#FFFFFF")},{_ass_color(accent)},{_ass_color("#000000", 0x10)},{back},-1,0,0,0,100,100,0,0,{border_style},{outline or 2},0,2,{margin_h},{margin_h},{margin_v},1
+Style: Cap,{look.font},{size},{_ass_color("#FFFFFF")},{_ass_color(accent)},{_ass_color("#000000", 0x10)},{back},-1,0,0,0,100,100,0,0,{border_style},{outline if not look.box else round(size * 0.22)},{0 if look.box else round(size * 0.06)},{align},{margin_h},{margin_h},{margin_v},1
+Style: Rtl,Noto Sans Arabic Bold,{size},{_ass_color("#FFFFFF")},{_ass_color(accent)},{_ass_color("#000000", 0x10)},{back},-1,0,0,0,100,100,0,0,{border_style},{outline or 2},0,{align},{margin_h},{margin_h},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -131,9 +132,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def write_ass(words: list[CaptionWord], path: Path, *, width: int, height: int, style: str,
-              accent: str = "#FFD400") -> Path:  # fmt: skip
+              accent: str = "#FFD400", top: bool = False) -> Path:  # fmt: skip
     path.write_text(
-        build_ass(words, width=width, height=height, style=style, accent=accent), encoding="utf-8"
+        build_ass(words, width=width, height=height, style=style, accent=accent, top=top), encoding="utf-8"
     )
     return path
 

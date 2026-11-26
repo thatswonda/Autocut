@@ -98,6 +98,10 @@ class MotionOptions(_In):
     brand_name: str = Field(default="", max_length=120)
     intro_template_id: str | None = None
     outro_template_id: str | None = None
+    voiceover: bool = False
+    voice: str = Field(default="female_us", max_length=32)
+    voiceover_captions: bool = False
+    music_asset_id: str | None = Field(default=None, max_length=64)
 
 
 class ProjectCreate(_In):
@@ -144,6 +148,7 @@ class AssetOut(BaseModel):
     height: int | None
     source: str
     url: str
+    duration_s: float | None = None
 
 
 class MotionOut(BaseModel):

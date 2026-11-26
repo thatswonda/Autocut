@@ -28,6 +28,7 @@
     rise: () => [{ opacity: 0, transform: `translateY(${16 * u}px)` }, { opacity: 1, transform: "none" }],
     bar_grow: () => [{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }],
     ken_burns: () => [{ transform: "scale(1)" }, { transform: "scale(1.07)" }],
+    slow_zoom: () => [{ transform: "scale(1)" }, { transform: "scale(1.05)" }],
     pulse: () => [{ transform: "scale(1)" }, { transform: "scale(1.05)", offset: 0.5 }, { transform: "scale(1)" }],
     ring: () => [
       { opacity: 0.9, transform: "scale(.25)" },
@@ -130,6 +131,24 @@
     }
   }
 
+  // Footage scenes show pre-extracted frames; seeking swaps the image and waits until it is decoded.
+  const footageImgs = {};
+  function footage(t) {
+    const waits = [];
+    for (const f of S.footage || []) {
+      if (t < f.from - 0.5 || t > f.to + 0.5) continue;
+      const img = footageImgs[f.id] || (footageImgs[f.id] = document.querySelector(`[data-footage="${f.id}"]`));
+      if (!img) continue;
+      const idx = Math.max(0, Math.min(f.count - 1, Math.floor((t - f.from) * f.fps + 1e-6)));
+      const src = `${f.prefix}${String(idx).padStart(5, "0")}.jpg`;
+      if (img.getAttribute("src") !== src) {
+        img.setAttribute("src", src);
+        waits.push(img.decode().catch(() => {}));
+      }
+    }
+    return waits;
+  }
+
   window.__seek = (t) => {
     for (const sc of S.scenes) {
       const el = document.getElementById(sc.id);
@@ -138,7 +157,8 @@
     const ms = t * 1000;
     for (const a of anims) a.currentTime = ms;
     counters(t);
-    return true;
+    const waits = footage(t);
+    return waits.length ? Promise.all(waits).then(() => true) : true;
   };
 
   window.__ready = async () => {

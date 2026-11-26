@@ -52,8 +52,14 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 RUN uv sync --frozen --no-dev
 
-# Bake on-device models into the image so workers never download at runtime.
-RUN autoedit models download && autoedit models list
+# Bake on-device models into the image so workers never download at runtime: MediaPipe detectors, the
+# Whisper speech model (AUTOEDIT_WHISPER_MODEL, default base) and two Piper voices. Other voices are
+# fetched on first use.
+ARG WHISPER_MODEL=base
+ENV AUTOEDIT_WHISPER_MODEL=${WHISPER_MODEL}
+RUN autoedit models download && autoedit models list \
+ && python -c "from autoedit_motion.voice import ensure_voice; assert ensure_voice('female_us') and ensure_voice('male_us')" \
+ && chmod -R a+rX "$AUTOEDIT_MODELS_DIR"
 
 RUN useradd --system --uid 10001 --user-group --create-home autoedit \
  && mkdir -p /data && chown autoedit:autoedit /data

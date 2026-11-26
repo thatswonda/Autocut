@@ -140,3 +140,70 @@ def plan_edit(
         },
     }
     return edl, report
+
+
+def transcribe_before_render(render_id: str) -> None:
+    """Process mode: transcribe every clip of an edit render in lean child processes *before* the render
+    job starts, so the speech model (~350 MB) never shares memory with the job or the video tools.
+    Failures are left to the render job, which then works without a transcript."""
+    import subprocess
+    import sys
+    import tempfile
+
+    from .db import Project, Render, session_scope
+    from .settings import get_settings
+    from .storage import get_storage
+
+    storage = get_storage()
+    db = session_scope()
+    try:
+        r = db.get(Render, render_id)
+        if r is None or r.kind != "edit" or (r.settings or {}).get("plan"):
+            return
+        project = db.get(Project, r.project_id)
+        if project is None:
+            return
+        todo = []
+        for c in sorted(project.clips, key=lambda c: c.position):
+            if (
+                c.status != "ready"
+                or any(a.kind == "transcript" for a in c.artifacts)
+                or not c.upload.storage_key
+            ):
+                continue
+            sig_art = next((a for a in c.artifacts if a.kind == "signals"), None)
+            if sig_art is None:
+                continue
+            sig = Signals.model_validate_json(storage.read_bytes(sig_art.storage_key))
+            if not sig.media.has_audio:
+                continue
+            speech = sig.summary.audio.speech_ratio if sig.summary.audio else 0.0
+            if speech < 0.03:
+                continue
+            todo.append(c)
+        if not todo:
+            return
+        r.stage, r.progress = "Listening to your video", 0.03
+        db.commit()
+        work = get_settings().work_dir
+        work.mkdir(parents=True, exist_ok=True)
+        for c in todo:
+            skey = c.upload.storage_key
+            assert skey is not None
+            with tempfile.TemporaryDirectory(dir=work) as td:
+                src = storage.local_path(skey) or storage.get_file(skey, Path(td) / f"src{Path(skey).suffix}")
+                out = Path(td) / "transcript.json"
+                proc = subprocess.run([sys.executable, "-m", "autoedit_pipeline.transcribe", str(src), str(out), c.id],
+                                      capture_output=True, timeout=3600, check=False)  # fmt: skip
+                if proc.returncode != 0 or not out.is_file():
+                    log.warning("transcription of %s exited with %s", c.id, proc.returncode)
+                    continue
+                tr = Transcript.model_validate_json(out.read_text(encoding="utf-8"))
+                key = clip_prefix(c.upload.user_id, c.project_id, c.id) + "transcript.json"
+                size = storage.put_bytes(key, tr.model_dump_json().encode(), "application/json")
+                _record_artifact(db, c, c.upload, "transcript", key, size)
+                db.commit()
+    except Exception:
+        log.exception("pre-render transcription failed for %s", render_id)
+    finally:
+        db.close()

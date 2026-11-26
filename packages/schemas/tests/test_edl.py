@@ -140,5 +140,5 @@ def test_lint_flags_soft_problems() -> None:
 
 def test_json_schemas_export() -> None:
     schemas = json_schemas()
-    assert set(schemas) == {"edl", "composition", "signals", "media_info"}
+    assert set(schemas) == {"edl", "composition", "signals", "media_info", "transcript"}
     assert schemas["edl"]["additionalProperties"] is False

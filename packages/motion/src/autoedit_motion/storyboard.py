@@ -48,7 +48,9 @@ LIMITS: dict[str, dict[str, int]] = {
     "price_offer": {"kicker": 24, "headline": 32, "price": 14, "subtext": 60, "item": 18},
     "logo_sting": {"headline": 40, "subtext": 40},
     "cta_end_card": {"headline": 40, "cta": 18, "subtext": 40},
+    "footage": {"kicker": 24, "headline": 40, "subtext": 80},
 }
+WORDS_PER_S = 2.9  # comfortable voiceover pace
 SLACK = 1.15  # tolerate small overruns; the renderer fits text anyway
 
 
@@ -61,9 +63,10 @@ class StoryboardError(RuntimeError):
 @dataclass
 class ImageInput:
     key: str
-    kind: str  # logo | photo | screenshot
+    kind: str  # logo | photo | screenshot | video (path is then the video's poster frame)
     path: Path
     source: str
+    duration_s: float = 0.0
 
 
 @dataclass
@@ -77,6 +80,8 @@ class StoryboardRequest:
     brand_name: str = ""
     sources: list[tuple[str, str]] = field(default_factory=list)  # (source_id, text)
     images: list[ImageInput] = field(default_factory=list)
+    voiceover: bool = False
+    music: bool = False
 
 
 @dataclass
@@ -225,7 +230,7 @@ def _user_content(req: StoryboardRequest) -> list[dict[str, Any]]:
     style = get_style(req.style)
     settings = {
         "aspect": req.aspect, "duration_s": req.duration_s, "style": style.key, "language": req.language,
-        "goal": req.goal, "brand_name": req.brand_name,
+        "goal": req.goal, "brand_name": req.brand_name, "voiceover": req.voiceover,
         "style_notes": f"{style.name}: {style.description} Default transition: {style.transition} {style.transition_s}s.",
     }  # fmt: skip
     blocks: list[dict[str, Any]] = [
@@ -239,8 +244,13 @@ def _user_content(req: StoryboardRequest) -> list[dict[str, Any]]:
         blocks.append({"type": "text", "text": "# Sources\n(none besides the brief)"})
     if req.images:
         blocks.append({"type": "text", "text": "# Images"})
-        for im in req.images[:8]:
-            blocks.append({"type": "text", "text": f"Asset id `{im.key}` ({im.kind}, from {im.source}):"})
+        for im in req.images[:10]:
+            extra = (
+                f", {im.duration_s:.1f} s long, use with the footage template" if im.kind == "video" else ""
+            )
+            blocks.append(
+                {"type": "text", "text": f"Asset id `{im.key}` ({im.kind}{extra}, from {im.source}):"}
+            )
             blocks.append(_image_block(im.path))
     else:
         blocks.append(
@@ -339,8 +349,31 @@ def check_scene(sc: Scene, req: StoryboardRequest, source_blob: str) -> list[str
 def check_composition(comp: Composition, req: StoryboardRequest) -> list[str]:
     blob = req.brief + "\n" + "\n".join(body for _, body in req.sources)
     problems: list[str] = []
+    videos = {im.key: im.duration_s for im in req.images if im.kind == "video"}
     for sc in comp.scenes:
         problems.extend(check_scene(sc, req, blob))
+        if sc.template == "footage":
+            if sc.clip_id not in videos:
+                problems.append(
+                    f"{sc.id}: footage clip_id must be one of the video asset ids {sorted(videos)}"
+                )
+            elif (sc.src_out or 0) > videos[sc.clip_id] + 0.1:
+                problems.append(f"{sc.id}: src_out {sc.src_out} is past the end of {sc.clip_id} "
+                                f"({videos[sc.clip_id]:.1f} s)")  # fmt: skip
+    if req.voiceover:
+        lines = sorted(comp.voiceover.script, key=lambda x: x.t_in)
+        if not lines:
+            problems.append("voiceover is on: write voiceover.script lines")
+        nums = {_digits(m) for m in _NUM_TOKEN.findall(blob)}
+        for i, ln in enumerate(lines):
+            end = lines[i + 1].t_in if i + 1 < len(lines) else comp.meta.duration_s
+            words = len(ln.text.split())
+            if words > (end - ln.t_in) * WORDS_PER_S + 2:
+                problems.append(f"voiceover line at {ln.t_in:.1f}s has {words} words for {end - ln.t_in:.1f}s; "
+                                f"keep to about {int((end - ln.t_in) * WORDS_PER_S)} words")  # fmt: skip
+            for n in _NUM_TOKEN.findall(ln.text):
+                if len(_digits(n)) >= 2 and _digits(n) not in nums:
+                    problems.append(f"voiceover says '{n}', which is not in the sources or brief")
     if comp.scenes and sorted(comp.scenes, key=lambda s: s.t_in)[-1].template != "cta_end_card":
         problems.append("the last scene must be a cta_end_card")
     return problems
@@ -374,6 +407,20 @@ def _normalise(comp_json: dict[str, Any], req: StoryboardRequest, brand: dict[st
         scenes[-1]["t_out"] = req.duration_s
     if scenes:
         scenes[-1]["transition_out"] = {"type": "cut", "duration_s": 0}
+    vo_raw = comp_json.get("voiceover")
+    vo: dict[str, Any] = vo_raw if isinstance(vo_raw, dict) else {}
+    if req.voiceover and vo.get("script"):
+        script = [ln for ln in vo["script"] if isinstance(ln, dict) and str(ln.get("text", "")).strip()]
+        for ln in script:
+            ln["t_in"] = round(min(max(0.0, float(ln.get("t_in", 0))), max(0.0, req.duration_s - 0.5)), 3)
+        comp_json["voiceover"] = {"enabled": True, "voice": str(vo.get("voice", ""))[:100], "script": script}
+    else:
+        comp_json["voiceover"] = {"enabled": False, "voice": "", "script": []}
+    audio_raw = comp_json.get("audio")
+    audio: dict[str, Any] = audio_raw if isinstance(audio_raw, dict) else {}
+    comp_json["audio"] = {**audio, "music": {"enabled": req.music, "mood": "upbeat",
+                                             "asset_id": "music" if req.music else None,
+                                             "duck_under_voiceover": True}}  # fmt: skip
     return comp_json
 
 

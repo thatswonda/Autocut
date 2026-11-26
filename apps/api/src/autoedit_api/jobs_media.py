@@ -69,11 +69,13 @@ def _storyboard_request(project: Project, mp: MotionPlan, image_assets: list[Ass
         ImageInput(
             key=a.id,
             kind=a.kind,
-            path=_local(storage, a.storage_key, workdir, f"{a.id}{Path(a.storage_key).suffix}"),
+            path=(_local(storage, a.storage_key + ".poster.jpg", workdir, f"{a.id}.poster.jpg") if a.kind == "video"
+                  else _local(storage, a.storage_key, workdir, f"{a.id}{Path(a.storage_key).suffix}")),
             source=a.source or f"file:{a.filename}",
+            duration_s=float(a.duration_s or 0),
         )
         for a in image_assets
-    ]
+    ]  # fmt: skip
     return StoryboardRequest(
         brief=project.prompt,
         aspect=opts.get("aspect", "9:16"),
@@ -84,6 +86,8 @@ def _storyboard_request(project: Project, mp: MotionPlan, image_assets: list[Ass
         brand_name=kit.get("name", ""),
         sources=sources,
         images=images,
+        voiceover=bool(opts.get("voiceover")),
+        music=bool(opts.get("music_asset_id")),
     )
 
 
@@ -123,6 +127,8 @@ def motion_plan_job(project_id: str) -> str:
         uploaded = db.scalars(
             select(Asset).where(Asset.id.in_(asset_ids), Asset.user_id == project.user_id)
         ).all()
+        videos = [a for a in uploaded if a.kind == "video"]
+        uploaded = [a for a in uploaded if a.kind != "video"]
         uploads = [
             ImageAsset(
                 key=a.id,
@@ -181,9 +187,12 @@ def motion_plan_job(project_id: str) -> str:
             db.commit()
             return "failed"
 
-        images = db.scalars(select(Asset).where(Asset.id.in_(list(key_to_asset.values())))).all()
+        images = db.scalars(
+            select(Asset).where(Asset.id.in_(list(key_to_asset.values()) + [v.id for v in videos]))
+        ).all()
         req = _storyboard_request(project, mp, list(images), workdir, storage)
         comp = generate_composition(req, _brand_for_composition(brand_kit, req.style), usage=usage)
+        comp = _self_review(comp, req, workdir, usage, project_id)
         mp = db.get(MotionPlan, project_id)
         assert mp is not None
         mp.composition = comp.model_dump(by_alias=True, mode="json")
@@ -211,6 +220,33 @@ def motion_plan_job(project_id: str) -> str:
     finally:
         db.close()
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _self_review(
+    comp: Composition, req: StoryboardRequest, workdir: Path, usage: Usage, project_id: str
+) -> Composition:
+    """Lay the storyboard out; scenes whose text cannot fit get one rewrite with shorter copy."""
+    from autoedit_motion.render import layout_warnings
+
+    images = {im.key: im.path for im in req.images}
+    try:
+        _set_plan(project_id, stage="Checking the layout", progress=0.85)
+        warnings = layout_warnings(comp, images, workdir=workdir / "review")
+    except Exception as exc:  # the review is a bonus; never fail the storyboard over it
+        log.warning("layout review skipped: %s", exc)
+        return comp
+    scene_ids = list(dict.fromkeys(w.split()[0] for w in warnings if w.split()))[:3]
+    for sid in scene_ids:
+        if not any(s.id == sid for s in comp.scenes):
+            continue
+        try:
+            comp = regenerate_scene(comp, sid, "The text does not fit on screen at a readable size. Make it "
+                                    "noticeably shorter, keep the same facts and template.", req, usage=usage)  # fmt: skip
+        except StoryboardError as exc:
+            log.info("self-review rewrite of %s skipped: %s", sid, exc)
+    if scene_ids:
+        log.info("self-review shortened scenes %s", scene_ids)
+    return comp
 
 
 def _record_cost(project_id: str, usage: Usage, stage: str) -> None:
@@ -363,6 +399,7 @@ def render_job(render_id: str) -> str:
                 raise RuntimeError("no storyboard to render")
             comp = parse_model(Composition, mp.composition)
             ids = {a for sc in comp.scenes for a in sc.content.assets}
+            ids |= {sc.clip_id for sc in comp.scenes if sc.template == "footage" and sc.clip_id}
             if comp.brand.logo_asset:
                 ids.add(comp.brand.logo_asset)
             assets = {
@@ -371,10 +408,32 @@ def render_job(render_id: str) -> str:
             }
             r.report = mp.composition
             db.commit()
+            opts = project.options or {}
+            music_asset = db.get(Asset, opts["music_asset_id"]) if opts.get("music_asset_id") else None
+            want_vo = comp.voiceover.enabled and bool(comp.voiceover.script)
+            needs_audio = want_vo or (music_asset is not None and comp.audio.music.enabled)
             main = workdir / "motion.mp4" if (intro or outro) else out
-            res = render_composition(comp, assets, main, workdir=workdir / "page", short_edge=short_edge,
-                                     progress=lambda f: progress(f * (0.85 if intro or outro else 1), "Animating"))  # fmt: skip
+            silent = workdir / "motion_silent.mp4" if needs_audio else main
+            res = render_composition(comp, assets, silent, workdir=workdir / "page", short_edge=short_edge,
+                                     progress=lambda f: progress(f * (0.8 if needs_audio or intro or outro else 1),
+                                                                 "Animating"))  # fmt: skip
             width, height, duration = res.width, res.height, res.duration_s
+            if needs_audio:
+                from autoedit_motion.voice import speak
+                from autoedit_render.motion_audio import Line, mix
+
+                lines: list[Line] = []
+                if want_vo:
+                    progress(0.82, "Recording the voiceover")
+                    spoken = speak([(ln.t_in, ln.text) for ln in comp.voiceover.script], workdir / "vo",
+                                   voice=opts.get("voice") or comp.voiceover.voice or "female_us")  # fmt: skip
+                    lines = [Line(x.t_in, x.text, x.path, x.duration_s) for x in spoken]
+                music_path = (_local(storage, music_asset.storage_key, workdir, f"music{Path(music_asset.storage_key).suffix}")
+                              if music_asset is not None and music_asset.user_id == project.user_id else None)  # fmt: skip
+                progress(0.88, "Mixing the sound")
+                mix(silent, main, workdir=workdir / "mix", total_s=duration, lines=lines, music=music_path,
+                    captions=bool(opts.get("voiceover_captions")) and want_vo, caption_style="clean",
+                    width=width, height=height, accent=comp.brand.colors.accent or "#FFD400")  # fmt: skip
             if res.warnings:
                 s = {**s, "warnings": res.warnings}
             if intro or outro:

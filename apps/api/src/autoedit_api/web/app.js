@@ -220,7 +220,7 @@
       outroId: null,
       poster: null,
       edit: { aspect: "9:16", color_preset: "auto", target: "" },
-      motion: { aspect: "9:16", duration_s: 20, style: "bold_pop" },
+      motion: { aspect: "9:16", duration_s: 20, style: "bold_pop", voiceover: false, voice: "female_us", vo_captions: false, music: null },
     },
   };
   const limitS = () => state.me?.limits?.max_total_raw_s ?? 1800;
@@ -345,10 +345,10 @@
       const im = item;
       const kinds = [["logo", "Logo"], ["photo", "Photo"], ["screenshot", "App screen"]];
       return `<div class="chip ${im.status === "error" ? "err" : ""}">
-        <span class="thumb" style="background-image:url(${im.thumb})"></span>
+        <span class="thumb" style="background-image:url(${im.thumb || ""})"></span>
         <span class="meta"><b title="${esc(im.name)}">${esc(im.name)}</b>
           ${im.status === "error" ? `<span>${esc(im.error)}</span>` : im.status === "uploading" ? "<span>Uploading…</span>" :
-            `<select data-img-kind="${im.key}" aria-label="Image type">${kinds.map(([k, l]) => `<option value="${k}" ${im.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select>`}
+            im.kind === "video" ? `<span>Footage · ${fmtDur(im.duration || 0)}</span>` : `<select data-img-kind="${im.key}" aria-label="Image type">${kinds.map(([k, l]) => `<option value="${k}" ${im.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select>`}
         </span>
         <button type="button" class="x" data-rm-img="${im.key}" aria-label="Remove ${esc(im.name)}">${icon.x}</button></div>`;
     }
@@ -463,7 +463,15 @@
               <div class="tiles">${colorTiles(d.edit.color_preset, d.poster, "data-grade")}</div></div>`
             : `<div class="trow">
               <div class="trow-head"><h3>Motion style</h3><span>Fonts, motion and layout. Your brand colors are applied on top.</span></div>
-              <div class="tiles">${styleTiles(d.motion.style, "data-style")}</div></div>`}
+              <div class="tiles">${styleTiles(d.motion.style, "data-style")}</div></div>
+            <div class="trow"><div class="trow-head"><h3>Sound</h3><span>Free voiceover generated on the server, and your own music</span></div>
+              <div class="row">
+                <label class="field2" for="opt-vo">Voiceover<select id="opt-vo"><option value="0" ${d.motion.voiceover ? "" : "selected"}>Off</option><option value="1" ${d.motion.voiceover ? "selected" : ""}>On</option></select></label>
+                ${d.motion.voiceover ? `<label class="field2" for="opt-voice">Voice<select id="opt-voice">${(state.catalog.voices || []).map((v) => `<option value="${v.key}" ${d.motion.voice === v.key ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label>
+                  <label class="field2" for="opt-vocap">Captions<select id="opt-vocap"><option value="0" ${d.motion.vo_captions ? "" : "selected"}>Off</option><option value="1" ${d.motion.vo_captions ? "selected" : ""}>On</option></select></label>` : ""}
+                <div class="field2">Music${d.motion.music ? `<div class="row" style="gap:6px"><span class="chip">${icon.check} ${esc(d.motion.music.filename)}</span><button type="button" class="btn small ghost" data-action="dmusic-clear">Remove</button></div>`
+                  : `<div class="row" style="gap:6px"><button type="button" class="btn small" data-action="dmusic-pick">${icon.plus} Add music</button></div>`}</div>
+              </div></div>`}
           ${myTemplateTiles(d.introId, d.outroId, "d")}
           <div class="trow"><div class="trow-head"><h3>Try</h3></div>
             <div class="examples" style="padding:0">${EXAMPLES[d.mode].map((t) => `<button type="button" class="example" data-example="${esc(t)}">${esc(t)}</button>`).join("")}</div></div>
@@ -533,6 +541,19 @@
     const other = files.filter((f) => !videos.includes(f) && !images.includes(f));
     if (other.length) toast(`${other[0].name} isn't a supported video or image.`, true);
     if (intoProject) { for (const f of videos) uploadIntoProject(f, intoProject); return; }
+    if (videos.length && state.draft.mode === "motion") {
+      for (const file of videos) {
+        if (file.size > 60 * 1024 * 1024) { toast(`${file.name} is over 60 MB. Use a shorter clip for motion videos.`, true); continue; }
+        if (state.draft.images.filter((i) => i.kind === "video").length >= 4) { toast("Up to 4 footage clips per motion video.", true); break; }
+        const meta = await localMeta(file);
+        const im = { key: `i${++keySeq}`, file, name: file.name, kind: "video", thumb: meta.thumb, duration: meta.duration || 0, status: "uploading" };
+        state.draft.images.push(im);
+        rerenderComposer();
+        uploadImage(im);
+      }
+      toast("Added as footage for your motion video");
+      videos.length = 0;
+    }
     if (videos.length && state.draft.mode !== "edit") { state.draft.mode = "edit"; toast("Switched to Edit video for your clips"); }
     else if (images.length && !videos.length && state.draft.mode !== "motion") { state.draft.mode = "motion"; toast("Switched to Motion graphics for your images"); }
     for (const file of videos) {
@@ -648,7 +669,8 @@
           title: (words || host || "Motion graphics").slice(0, 120),
           prompt: d.prompt.trim(),
           options: { aspect: d.motion.aspect, duration_s: d.motion.durationTouched || !asked ? d.motion.duration_s : Math.min(60, Math.max(6, Math.round(asked))),
-                     style: d.motion.style,
+                     style: d.motion.style, voiceover: !!d.motion.voiceover, voice: d.motion.voice,
+                     voiceover_captions: !!d.motion.vo_captions, music_asset_id: d.motion.music?.id || null,
                      intro_template_id: d.introId, outro_template_id: d.outroId },
           source_urls: links,
           asset_ids: d.images.filter((i) => i.status === "ready").map((i) => i.asset.id),
@@ -1078,7 +1100,9 @@
     if (!sb) return "";
     const comp = sb.comp;
     const pending = p.motion.pending_scene;
-    const imgs = p.motion.assets.filter((a) => a.kind !== "logo");
+    const imgs = p.motion.assets.filter((a) => a.kind !== "logo" && a.kind !== "video");
+    const clips = p.motion.assets.filter((a) => a.kind === "video");
+    const vo = comp.voiceover?.enabled ? comp.voiceover.script || [] : [];
     return `
       <section class="panel" aria-label="Storyboard">
         <div class="panel-head"><h2>Storyboard</h2><span class="sub">${comp.scenes.length} scenes · ${comp.meta.duration_s}s · edit anything, or ask Claude to rewrite a scene</span></div>
@@ -1087,7 +1111,7 @@
           <div class="scenes">${comp.scenes.map((sc, i) => `
             <div class="scene-card ${pending === sc.id ? "busy" : ""}">
               <div class="scene-top"><span class="num">${i + 1}</span>
-                <select data-stpl="${i}" aria-label="Scene type">${Object.entries(TEMPLATE_LABEL).filter(([k]) => k !== "footage").map(([k, l]) => `<option value="${k}" ${sc.template === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+                <select data-stpl="${i}" aria-label="Scene type">${Object.entries(TEMPLATE_LABEL).filter(([k]) => k !== "footage" || sc.template === "footage").map(([k, l]) => `<option value="${k}" ${sc.template === k ? "selected" : ""}>${l}</option>`).join("")}</select>
                 <span class="tc mono">${sc.t_in.toFixed(1)}s – ${sc.t_out.toFixed(1)}s</span>
                 ${pending === sc.id ? `<span class="row" style="gap:6px"><span class="spin"></span><span class="note">Claude is rewriting this scene…</span></span>` : ""}
               </div>
@@ -1095,6 +1119,8 @@
                 <div class="scene-fields">${sceneFieldsHtml(sc, i)}</div>
                 <div class="scene-side">
                   ${["product_reveal", "device_mockup"].includes(sc.template) ? `<span>Image</span><div class="imgs">${imgs.map((a) => `<button type="button" data-simg="${i}:${a.id}" aria-pressed="${(sc.content.assets || [])[0] === a.id}" style="background-image:url(${esc(a.url)})" title="${esc(a.source)}"></button>`).join("") || "<span>No images. Add photos when you create a project.</span>"}</div>` : ""}
+                  ${sc.template === "footage" ? `<span>Clip</span><div class="imgs">${clips.map((a) => `<button type="button" data-sclip="${i}:${a.id}" aria-pressed="${sc.clip_id === a.id}" style="background-image:url(${esc(a.url)})" title="${esc(a.filename || "")} · ${fmtDur(a.duration_s || 0)}"></button>`).join("")}</div>
+                    <span class="note">Plays ${(sc.src_in || 0).toFixed(1)}s – ${(sc.src_out || 0).toFixed(1)}s of the clip</span>` : ""}
                   ${sc.claims?.length ? `<span>Facts and their sources</span><div class="claims">${sc.claims.map((c) => `<span class="claim" title="${esc(c.text)}">${esc(c.source)}</span>`).join("")}</div>` : ""}
                   ${sc.reason ? `<span class="reason">${esc(sc.reason)}</span>` : ""}
                 </div>
@@ -1102,6 +1128,9 @@
               <div class="regen"><input id="regen-${esc(sc.id)}" type="text" placeholder="Ask Claude to change this scene, e.g. make it punchier" maxlength="300" ${pending ? "disabled" : ""}>
                 <button type="button" class="btn small" data-regen="${esc(sc.id)}" ${pending ? "disabled" : ""}>${icon.wand} Rewrite</button></div>
             </div>`).join("")}</div>
+          ${vo.length ? `<div class="trow"><div class="trow-head"><h3>Voiceover</h3><span>Spoken by the server's voice. Edit the words; numbers must stay true to your sources.</span></div>
+            ${vo.map((ln, i) => `<label class="field2" for="vo-${i}" style="width:100%"><span class="mono">${ln.t_in.toFixed(1)}s</span>
+              <input id="vo-${i}" data-vo="${i}" type="text" maxlength="400" value="${esc(ln.text)}" style="width:100%;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);padding:0 10px"></label>`).join("")}</div>` : ""}
         </div>
       </section>`;
   }
@@ -1162,6 +1191,7 @@
     try {
       const fd = new FormData(); fd.append("file", file); fd.append("kind", "music");
       const a = await api.req("POST", "/v1/assets", fd);
+      if (state.musicTarget === "draft") { state.draft.motion.music = { id: a.id, filename: a.filename }; state.musicTarget = null; toast("Music added"); return rerenderComposer(); }
       state.ui.music = { id: a.id, filename: a.filename };
       toast("Music added");
       renderProject();
@@ -1489,7 +1519,9 @@
       return;
     }
     if (d.action === "save-template") return saveTemplate();
-    if (d.action === "music-pick") return pickMusic();
+    if (d.action === "music-pick") { state.musicTarget = "project"; return pickMusic(); }
+    if (d.action === "dmusic-pick") { state.musicTarget = "draft"; return pickMusic(); }
+    if (d.action === "dmusic-clear") { state.draft.motion.music = null; return rerenderComposer(); }
     if (d.action === "music-clear") { state.ui.music = null; return renderProject(); }
     if (d.pseg && state.ui.planEdit) {
       const [i, dir] = d.pseg.split(":").map(Number);
@@ -1545,6 +1577,17 @@
     if (d.action === "save-sb") { if (await saveStoryboard()) toast("Storyboard saved"); return; }
     if (d.action === "discard-sb") { state.sb = { pid: p.id, version: p.motion.version, comp: clone(p.motion.composition), dirty: false }; return renderProject(); }
     if (d.bkLogo !== undefined && state.sb) { state.sb.comp.brand.logo_asset = d.bkLogo || null; return markDirty(true); }
+    if (d.sclip && state.sb) {
+      const [i, aid] = d.sclip.split(":");
+      const sc = state.sb.comp.scenes[Number(i)];
+      const a = state.project?.motion?.assets.find((x) => x.id === aid);
+      if (sc && a) {
+        const len = Math.min(a.duration_s || 3, sc.t_out - sc.t_in);
+        Object.assign(sc, { clip_id: aid, src_in: 0, src_out: Math.max(0.5, Math.round(len * 100) / 100) });
+        markDirty(true);
+      }
+      return;
+    }
     if (d.simg && state.sb) {
       const [i, aid] = d.simg.split(":");
       state.sb.comp.scenes[Number(i)].content.assets = [aid];
@@ -1628,6 +1671,10 @@
       return markDirty();
     }
     if (el.id === "bk-name" && state.sb) { state.sb.comp.brand.name = el.value; return markDirty(); }
+    if (el.dataset.vo !== undefined && state.sb) {
+      const ln = state.sb.comp.voiceover?.script?.[Number(el.dataset.vo)];
+      if (ln) { ln.text = el.value; return markDirty(); }
+    }
     if (el.id === "r-prompt") { state.ui.renderOpts.prompt = el.value; return; }
     if (el.dataset.pcolor) { const lab = el.closest("label")?.querySelector(".mono"); if (lab) lab.textContent = el.value; }
   });
@@ -1638,6 +1685,9 @@
     if (el.id === "opt-aspect") { d[d.mode].aspect = el.value; return; }
     if (el.id === "opt-target") { d.edit.target = el.value; return; }
     if (el.id === "opt-duration") { d.motion.duration_s = Number(el.value); d.motion.durationTouched = true; return; }
+    if (el.id === "opt-vo") { d.motion.voiceover = el.value === "1"; return rerenderComposer(); }
+    if (el.id === "opt-voice") { d.motion.voice = el.value; return; }
+    if (el.id === "opt-vocap") { d.motion.vo_captions = el.value === "1"; return; }
     if (el.id === "auth") { d.authorized = el.checked; return rerenderComposer(); }
     if (el.dataset.imgKind) {
       const im = d.images.find((x) => x.key === el.dataset.imgKind);
