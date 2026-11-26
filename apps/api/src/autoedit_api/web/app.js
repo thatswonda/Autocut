@@ -450,7 +450,7 @@
                 `<option value="${s}" ${String(d.edit.target) === String(s) ? "selected" : ""}>~${fmtDur(s)}</option>`).join("")}</select>`
               : `<select class="tselect" id="opt-duration" aria-label="Length">${[10, 15, 20, 30, 45, 60].map((s) =>
                 `<option value="${s}" ${d.motion.duration_s === s ? "selected" : ""}>${s} seconds</option>`).join("")}</select>`}
-            <button type="button" class="send" data-action="send" aria-label="Send" ${cs.can ? "" : "disabled"}>${icon.send}</button>
+            <button type="button" class="send${cs.can ? "" : " dim"}" data-action="send" aria-label="Send" title="${cs.can ? "Send" : esc(cs.note)}">${icon.send}</button>
           </div>
         </section>
         <div class="belowbox">
@@ -1454,7 +1454,7 @@
       autoGrow(el);
       const cs = composerState();
       const btn = $('[data-action="send"]');
-      if (btn) btn.disabled = !cs.can;
+      if (btn) { btn.classList.toggle("dim", !cs.can); btn.title = cs.can ? "Send" : cs.note; }
       return;
     }
     if (el.dataset.sf && state.sb) {

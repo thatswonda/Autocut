@@ -380,7 +380,8 @@ a.btn { text-decoration: none; color: inherit; }
   display: grid; place-items: center; cursor: pointer; transition: transform .1s, opacity .15s;
 }
 .send svg { width: 18px; height: 18px; }
-.send:disabled { opacity: .35; cursor: not-allowed; }
+.send:disabled, .send.dim { opacity: .35; }
+.send:disabled { cursor: progress; }
 .send:not(:disabled):active { transform: scale(.94); }
 .menu { position: relative; }
 .menu-pop {
