@@ -80,3 +80,14 @@ def test_cost_ceiling(photo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(StoryboardError) as exc:
         generate_composition(_req(photo), BRAND, client=FakeClaude())
     assert exc.value.code == "cost_ceiling"
+
+
+def test_pasted_key_is_cleaned_and_bad_keys_are_explained(monkeypatch: pytest.MonkeyPatch) -> None:
+    from autoedit_motion.storyboard import api_key, key_problem
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", '  "sk-ant-api03-abc"\n')
+    assert api_key() == "sk-ant-api03-abc" and key_problem() is None
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-proj-123")
+    assert "start with sk-ant-" in (key_problem() or "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03 abc")
+    assert "one line" in (key_problem() or "")

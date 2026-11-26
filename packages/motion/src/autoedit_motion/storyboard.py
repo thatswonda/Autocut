@@ -105,8 +105,27 @@ def fake_ai() -> bool:
     return os.environ.get("AUTOEDIT_FAKE_AI") == "1"
 
 
+def api_key() -> str | None:
+    """The key as pasted into a dashboard often carries spaces, a newline or quotes; strip them."""
+    raw = os.environ.get("ANTHROPIC_API_KEY") or ""
+    key = raw.strip().strip("\"'").strip()
+    return key or None
+
+
+def key_problem() -> str | None:
+    """A plain-language reason the configured key cannot work, without revealing it."""
+    key = api_key()
+    if key is None:
+        return None
+    if not key.startswith("sk-ant-"):
+        return "ANTHROPIC_API_KEY does not look like an Anthropic key (they start with sk-ant-)."
+    if any(c.isspace() for c in key):
+        return "ANTHROPIC_API_KEY contains spaces or line breaks in the middle. Paste it again as one line."
+    return None
+
+
 def ai_available() -> bool:
-    return fake_ai() or bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+    return fake_ai() or bool(api_key() or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
 # --------------------------------------------------------------------------------------- client
@@ -118,7 +137,12 @@ class ClaudeClient:
     def __init__(self) -> None:
         import anthropic
 
-        self.client = anthropic.Anthropic(max_retries=3, timeout=300.0)
+        key = api_key()
+        self.client = (
+            anthropic.Anthropic(api_key=key, max_retries=3, timeout=300.0)
+            if key
+            else anthropic.Anthropic(max_retries=3, timeout=300.0)
+        )
 
     def complete(self, system: str, messages: list[dict[str, Any]], usage: Usage) -> tuple[str, list[Any]]:
         import anthropic
@@ -135,15 +159,32 @@ class ClaudeClient:
                 fallbacks="default",
             )
         except anthropic.AuthenticationError as exc:
+            hint = key_problem() or (
+                "Anthropic says the key is not valid: it may have been deleted, mistyped, or belong to a "
+                "different account. Create a new key at console.anthropic.com, paste it into Render "
+                "(Environment, ANTHROPIC_API_KEY), save, then press Try again."
+            )
+            raise StoryboardError("ai_auth", f"The Anthropic API key was rejected. {hint}") from exc
+        except anthropic.PermissionDeniedError as exc:
             raise StoryboardError(
-                "ai_auth", "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY."
+                "ai_forbidden",
+                "The Anthropic key works but is not allowed to use this model or feature. Check the key's "
+                "workspace and the account's billing at console.anthropic.com.",
             ) from exc
         except anthropic.RateLimitError as exc:
             raise StoryboardError(
                 "ai_rate_limited", "Claude is busy right now. Try again in a minute."
             ) from exc
         except anthropic.APIStatusError as exc:
-            raise StoryboardError("ai_error", f"Claude request failed ({exc.status_code}).") from exc
+            detail = str(getattr(exc, "message", "") or "")[:200]
+            if "credit balance" in detail.lower():
+                raise StoryboardError(
+                    "ai_no_credit",
+                    "The Anthropic account has no credit left. Add credit at console.anthropic.com.",
+                ) from exc
+            raise StoryboardError(
+                "ai_error", f"Claude request failed ({exc.status_code}). {detail}".strip()
+            ) from exc
         except anthropic.APIConnectionError as exc:
             raise StoryboardError("ai_unreachable", "Could not reach the Claude API.") from exc
         usage.model = model
