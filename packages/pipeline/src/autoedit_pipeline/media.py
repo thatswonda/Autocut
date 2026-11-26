@@ -266,8 +266,18 @@ def iter_frames(
             raise MediaError("decode_failed", f"frame decode failed: {stderr.strip()[-300:]}")
 
 
-def extract_audio(path: Path, sample_rate: int = 16000, *, timeout: float = 600.0) -> npt.NDArray[np.float32]:
-    """Decode the first audio track as mono float32 PCM in [-1, 1]."""
+def extract_audio(
+    path: Path,
+    sample_rate: int = 16000,
+    *,
+    timeout: float = 600.0,
+    start_s: float | None = None,
+    duration_s: float | None = None,
+) -> npt.NDArray[np.float32]:
+    """Decode the first audio track as mono float32 PCM in [-1, 1], optionally only a window of it."""
+    window = (["-ss", f"{start_s:.3f}"] if start_s else []) + (
+        ["-t", f"{duration_s:.3f}"] if duration_s else []
+    )
     proc = _run(
         [
             FFMPEG,
@@ -275,6 +285,7 @@ def extract_audio(path: Path, sample_rate: int = 16000, *, timeout: float = 600.
             "-hide_banner",
             "-loglevel",
             "error",
+            *window,
             "-i",
             str(path),
             "-map",

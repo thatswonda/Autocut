@@ -75,9 +75,11 @@ class EditOptions(_In):
     aspect: AspectStr = "9:16"
     target_duration_s: float | None = Field(default=None, gt=0, le=3600)
     style: str = Field(default="energetic", max_length=64)
-    color_preset: str = Field(default="natural", max_length=32)
+    color_preset: str = Field(default="auto", max_length=32)
     language: str | None = Field(default=None, max_length=16)
-    captions: bool = True
+    captions: bool | None = None
+    caption_style: str | None = Field(default=None, max_length=32)
+    music_asset_id: str | None = Field(default=None, max_length=64)
     broll: bool = True
     sfx: bool = True
     color_grade: bool = True
@@ -184,6 +186,11 @@ class RenderCreate(_In):
     target_duration_s: float | None = Field(default=None, gt=0, le=3600)
     intro_template_id: str | None = None
     outro_template_id: str | None = None
+    prompt: str | None = Field(default=None, max_length=4000, description="New instructions for the edit")
+    plan: dict[str, Any] | None = Field(default=None, description="An edited plan from a previous render")
+    captions: bool | None = None
+    caption_style: str | None = Field(default=None, max_length=32)
+    music_asset_id: str | None = Field(default=None, max_length=64)
 
 
 class SceneRegenerate(_In):

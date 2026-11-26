@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -146,8 +147,57 @@ def test_edit_render_with_color_grade(client: TestClient, short_clip: Path) -> N
     assert (rnd["width"], rnd["height"]) == (720, 720)
     report = rnd["report"]
     assert any(x["reason"] == "Black frames" for x in report["removed"])  # the 2 s black intro was cut
-    assert rnd["duration_s"] == pytest.approx(4.0, abs=0.5)
+    assert rnd["duration_s"] == pytest.approx(4.8, abs=0.5)  # the stand-in plan keeps the middle 80%
+    assert report["planning"]["source"] == "ai"
+    assert report["plan"]["color"]["preset"] == "teal_orange"  # the user's chosen grade wins
     assert project["status"] == "done"
+
+
+def test_edit_without_ai_uses_rules_and_prompt_look(client: TestClient, short_clip: Path,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AUTOEDIT_FAKE_AI", raising=False)
+    up = upload_file(client, short_clip)
+    pid = client.post("/v1/projects", json={"mode": "edit", "upload_ids": [up["id"]], "prompt": "dark moody look",
+                                             "options": {"aspect": "9:16"}}).json()["id"]  # fmt: skip
+    assert client.post(f"/v1/projects/{pid}/renders", json={}).status_code == 201
+    rnd = client.get(f"/v1/projects/{pid}").json()["renders"][0]
+    assert rnd["status"] == "ready", rnd
+    planning = rnd["report"]["planning"]
+    assert planning["source"] == "rules" and "AI editing is off" in planning["note"]
+    assert rnd["report"]["color"]["preset"] == "moody_film"  # look taken from the prompt
+
+
+def test_rerender_with_edited_plan_and_music(client: TestClient, short_clip: Path, tmp_path: Path) -> None:
+    up = upload_file(client, short_clip)
+    pid = client.post("/v1/projects", json={"mode": "edit", "upload_ids": [up["id"]]}).json()["id"]
+    assert client.post(f"/v1/projects/{pid}/renders", json={}).status_code == 201
+    first = client.get(f"/v1/projects/{pid}").json()["renders"][0]
+    plan = first["report"]["plan"]
+    seg = plan["segments"][0]
+    plan["segments"] = [{**seg, "src_in": 2.5, "src_out": 4.5, "reason": "Only the best bit"}]
+    plan["color"]["preset"] = "black_white"
+
+    music = tmp_path / "bed.m4a"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=3", "-c:a", "aac",
+                    str(music)], check=True)  # fmt: skip
+    with music.open("rb") as fh:
+        m = client.post("/v1/assets", files={"file": ("bed.m4a", fh, "audio/mp4")}, data={"kind": "music"})
+    assert m.status_code == 201, m.text
+    with music.open("rb") as fh:
+        bad = client.post("/v1/assets", files={"file": ("bed.exe", fh, "application/octet-stream")},
+                          data={"kind": "music"})  # fmt: skip
+    assert bad.status_code == 415
+
+    r = client.post(f"/v1/projects/{pid}/renders", json={"plan": plan, "music_asset_id": m.json()["id"]})
+    assert r.status_code == 201, r.text
+    latest = client.get(f"/v1/projects/{pid}").json()["renders"][0]
+    assert latest["status"] == "ready", latest
+    assert latest["report"]["planning"]["source"] == "user"
+    assert latest["report"]["color"]["preset"] == "black_white"
+    assert latest["duration_s"] == pytest.approx(2.0, abs=0.3)
+    assert latest["report"]["audio"]["music"]["enabled"] is True
+    assert client.post(f"/v1/projects/{pid}/renders", json={"plan": {"segments": []}}).status_code == 422
 
 
 def test_catalog(client: TestClient) -> None:

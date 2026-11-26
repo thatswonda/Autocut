@@ -22,6 +22,8 @@ class FakeClaude:
         usage.output_tokens += 1500
         text = "\n".join(b.get("text", "") for m in messages if m["role"] == "user" and isinstance(m["content"], list)
                          for b in m["content"] if b.get("type") == "text")  # fmt: skip
+        if text.startswith("# Edit request") or "\n# Edit request" in text:
+            return self._edit_plan(text), []
         assets = re.findall(r"Asset id `([^`]+)` \((\w+)", text)
         photo = next((a for a, k in assets if k == "photo"), None)
         if "Scene to change:" in text:
@@ -56,3 +58,49 @@ class FakeClaude:
         comp = {"version": 1, "meta": {"title": "Test", "summary": "Test storyboard"}, "brand": {"name": "x"},
                 "scenes": scenes}  # fmt: skip
         return "```json\n" + json.dumps(comp) + "\n```", []
+
+    @staticmethod
+    def _edit_plan(text: str) -> str:
+        """Keep every transcript phrase (or the middle of each silent clip), punch in on the second one."""
+        segments = []
+        removed = []
+        for block in re.split(r"\n(?=## Clip )", text):
+            head = re.match(r"## Clip (\S+) \(order \d+, ([\d.]+) s", block)
+            if not head:
+                continue
+            cid, dur = head.group(1), float(head.group(2))
+            phrases = [(float(a), float(b)) for a, b in re.findall(r"^\[([\d.]+)-([\d.]+)\]", block, re.M)]
+            if phrases:
+                for i, (a, b) in enumerate(phrases):
+                    segments.append(
+                        {
+                            "clip_id": cid,
+                            "src_in": a,
+                            "src_out": b,
+                            "reason": f"Phrase {i + 1}",
+                            "punch_in": i == 1,
+                        }
+                    )
+                if phrases[0][0] > 0.5:
+                    removed.append(
+                        {"clip_id": cid, "src_in": 0, "src_out": phrases[0][0], "reason": "Lead-in"}
+                    )
+            else:
+                segments.append(
+                    {
+                        "clip_id": cid,
+                        "src_in": round(dur * 0.1, 2),
+                        "src_out": round(dur * 0.9, 2),
+                        "reason": "The visible action",
+                    }
+                )
+        plan = {
+            "title": "Test edit",
+            "summary": "Kept every phrase.",
+            "segments": segments,
+            "removed": removed,
+            "tighten": True,
+            "color": {"preset": "moody_film", "exposure": 8, "contrast": 10, "reason": "Dark look requested"},
+            "captions": {"enabled": True, "style": "word_pop", "highlight": ["price", "naira"]},
+        }
+        return "```json\n" + json.dumps(plan) + "\n```"

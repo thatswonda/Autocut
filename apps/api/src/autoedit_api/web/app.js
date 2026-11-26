@@ -219,7 +219,7 @@
       introId: null,
       outroId: null,
       poster: null,
-      edit: { aspect: "9:16", color_preset: "natural", target: "" },
+      edit: { aspect: "9:16", color_preset: "auto", target: "" },
       motion: { aspect: "9:16", duration_s: 20, style: "bold_pop" },
     },
   };
@@ -731,7 +731,9 @@
     const rendering = latest && (latest.status === "queued" || latest.status === "processing");
     const shown = p.renders.find((r) => r.id === state.ui.renderId && r.status === "ready") || p.renders.find((r) => r.status === "ready");
     let step = "";
-    if (rendering) step = progressPanel("Making your edit", latest, ["Cutting dead air", "Reframing and grading", "Levelling the sound", "Rendering"]);
+    if (rendering) step = progressPanel("Making your edit", latest, state.catalog.ai_enabled
+      ? ["Listening", "Watching", "Planning the edit", "Cutting and grading", "Captions and sound"]
+      : ["Listening", "Cutting dead air", "Reframing and grading", "Captions and sound"]);
     else if (analyzing) step = `<section class="panel"><div class="panel-body"><div class="row"><span class="spin"></span><b>Analyzing your clips…</b></div>
         <span class="note">When every clip is done you can create your edit. You can leave this page; it keeps working.</span></div></section>`;
     else if (anyReady && (!shown || state.ui.showOptions)) step = editOptionsPanel(p);
@@ -791,24 +793,44 @@
   function editOptionsPanel(p) {
     const o = p.options || {};
     const aspect = opt("aspect", o.aspect || "9:16");
-    const grade = opt("color_preset", o.color_preset || "natural");
+    const grade = opt("color_preset", o.color_preset || "auto");
     const target = opt("target_duration_s", o.target_duration_s ?? "");
     const res = opt("resolution", 720);
+    const prompt = opt("prompt", p.prompt || "");
+    const caps = opt("captions", o.captions ?? "auto");
+    const capStyle = opt("caption_style", o.caption_style || "word_pop");
+    const music = state.ui.music;
+    const ai = state.catalog.ai_enabled;
     return `
       <section class="panel cta-panel" aria-label="Create your edit">
-        <div class="panel-head"><h2>Create your edit</h2><span class="sub">Cuts dead air, empty shots and long pauses, reframes around people, grades the color and levels the sound.</span></div>
+        <div class="panel-head"><h2>Create your edit</h2><span class="sub">${ai
+          ? "Claude watches and listens to your footage, then edits it the way you ask: story, cuts, captions, grade and sound."
+          : "Automatic cut: removes dead air, filler words and long pauses, adds captions, grades and levels the sound. Add an Anthropic key on the server for AI editing."}</span></div>
         <div class="panel-body">
+          <label class="field2" for="r-prompt" style="width:100%">How should it be edited?
+            <textarea id="r-prompt" rows="3" maxlength="4000" placeholder="e.g. A punchy 30-second Reel. Open with the price, cut the rambling, dark moody grade, bold captions." style="width:100%;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);padding:10px;font:inherit;resize:vertical">${esc(prompt)}</textarea></label>
           <div class="row">
             <label class="field2" for="r-aspect">Format<select id="r-aspect">${Object.entries(ASPECT_LABEL).map(([k, l]) => `<option value="${k}" ${aspect === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
             <label class="field2" for="r-target">Length<select id="r-target"><option value="">Keep everything good</option>${[15, 30, 45, 60, 90, 120, 180].map((s) => `<option value="${s}" ${String(target) === String(s) ? "selected" : ""}>About ${fmtDur(s)}</option>`).join("")}</select></label>
             <label class="field2" for="r-res">Quality<select id="r-res"><option value="720" ${res === 720 ? "selected" : ""}>720p (faster)</option><option value="1080" ${res === 1080 ? "selected" : ""}>1080p</option></select></label>
           </div>
-          <div class="trow"><div class="trow-head"><h3>Color grade</h3><span>Preview on your footage (approximate)</span></div>
+          <div class="trow"><div class="trow-head"><h3>Color grade</h3><span>${grade === "auto" ? "Auto: picked from your instructions and footage" : "Preview on your footage (approximate)"}</span></div>
             <div class="tiles">${colorTiles(grade, state.posters.get(p.id), "data-rgrade")}</div></div>
+          <div class="row">
+            <label class="field2" for="r-caps">Captions<select id="r-caps">
+              <option value="auto" ${caps === "auto" || caps == null ? "selected" : ""}>Auto (on when people speak)</option>
+              <option value="on" ${caps === true || caps === "on" ? "selected" : ""}>On</option>
+              <option value="off" ${caps === false || caps === "off" ? "selected" : ""}>Off</option></select></label>
+            <label class="field2" for="r-capstyle">Caption style<select id="r-capstyle">${(state.catalog.caption_styles || []).map((c) =>
+              `<option value="${c.key}" ${capStyle === c.key ? "selected" : ""}>${esc(c.name)}: ${esc(c.description)}</option>`).join("")}</select></label>
+            <div class="field2">Music bed
+              <div class="row" style="gap:6px">${music ? `<span class="chip">${icon.check} ${esc(music.filename)}</span><button type="button" class="btn small ghost" data-action="music-clear">Remove</button>`
+                : `<button type="button" class="btn small" data-action="music-pick">${icon.plus} Add music</button><span class="note">MP3/M4A, ducks under speech</span>`}</div></div>
+          </div>
           ${templatePicker("r")}
           <div class="row"><button type="button" class="btn primary big-btn" data-action="render">${icon.wand} Create my edit</button>
             ${p.renders.some((r) => r.status === "ready") ? `<button type="button" class="btn ghost" data-action="hide-options">Cancel</button>` : ""}
-            <span class="note">This first cut follows rules from the analysis. AI story editing and captions are coming next.</span></div>
+            <span class="note">${ai ? "About ₦300–700 of Claude usage per edit." : "AI editing is off on this server."}</span></div>
         </div>
       </section>`;
   }
@@ -825,25 +847,98 @@
       </section>`;
   }
 
+  // ---- edit decisions: what the plan kept and cut, with reasons; change it and re-render ------------
+  function planFor(r) {
+    if (!state.ui.planEdit || state.ui.planFor !== r.id) {
+      const base = r.report.plan || { segments: (r.report.segments || []).map((x) => ({ clip_id: x.clip_id, src_in: x.src_in, src_out: x.src_out, reason: x.reason })),
+        removed: [], color: { preset: r.report.color?.preset || "natural" }, captions: { enabled: !!r.report.captions?.enabled, style: r.report.captions?.style || "word_pop" } };
+      state.ui.planEdit = JSON.parse(JSON.stringify(base));
+      state.ui.planEdit.edits = state.ui.planEdit.edits || {};
+      state.ui.planEdit.color = { exposure: 0, contrast: 0, saturation: 0, temperature: 0, ...(state.ui.planEdit.color || {}) };
+      state.ui.planFor = r.id;
+      state.ui.planDirty = false;
+    }
+    return state.ui.planEdit;
+  }
+
+  function decisionsPanel(p, r) {
+    const plan = planFor(r);
+    const rep = r.report;
+    const clipName = (id) => p.clips.find((c) => c.id === id)?.filename || id;
+    const planning = rep.planning || {};
+    const removed = (rep.removed || []).filter((x) => x.src_out - x.src_in >= 0.3);
+    const segRows = plan.segments.map((sg, i) => `
+      <div class="finding" style="cursor:default">
+        <span class="tc">${fmtTC(sg.src_in)} – ${fmtTC(sg.src_out)}</span>
+        <span class="what"><b>${esc(sg.reason || "Kept")}</b> <span class="muted">· ${esc(clipName(sg.clip_id))}${sg.punch_in ? " · punch-in" : ""}${sg.speed && sg.speed !== 1 ? ` · ${sg.speed}×` : ""}</span></span>
+        <span class="row" style="gap:4px">
+          <button type="button" class="btn icon ghost" data-pseg="${i}:-1" aria-label="Move earlier" ${i === 0 ? "disabled" : ""}>${icon.up}</button>
+          <button type="button" class="btn icon ghost" data-pseg="${i}:1" aria-label="Move later" ${i === plan.segments.length - 1 ? "disabled" : ""}>${icon.down}</button>
+          <button type="button" class="btn small ghost" data-pdrop="${i}" ${plan.segments.length < 2 ? "disabled" : ""}>Cut</button></span></div>`).join("");
+    const cutRows = removed.map((x, i) => `
+      <div class="finding" style="cursor:default">
+        <span class="tc">${fmtTC(x.src_in)} – ${fmtTC(x.src_out)}</span>
+        <span class="what">${esc(x.reason || "Cut")} <span class="muted">· ${esc(clipName(x.clip_id))}</span></span>
+        <button type="button" class="btn small" data-prestore="${i}">Restore</button></div>`).join("");
+    const c = plan.color;
+    const slider = (k, label) => `<label class="field2" for="pc-${k}" style="min-width:120px">${label} <span class="mono">${Math.round(c[k] || 0)}</span>
+      <input id="pc-${k}" data-pcolor="${k}" type="range" min="-60" max="60" step="1" value="${Math.round(c[k] || 0)}"></label>`;
+    const fixes = Object.entries(plan.edits || {});
+    return `
+      ${planning.note ? `<div class="banner">${icon.info}<span>${esc(planning.note)}</span></div>` : ""}
+      ${rep.meta?.summary ? `<p class="note" style="margin:6px 0">${esc(rep.meta.summary)}</p>` : ""}
+      <details class="more" ${state.ui.planOpen ? "open" : ""} data-plan-details>
+        <summary>Edit decisions: ${plan.segments.length} part${plan.segments.length === 1 ? "" : "s"} kept, ${removed.length} cut${planning.source === "ai" ? " · planned by Claude" : planning.source === "user" ? " · your changes" : ""}</summary>
+        <div class="trow"><div class="trow-head"><h3>Kept, in order</h3><span>Reorder or cut parts</span></div><div class="report findings">${segRows}</div></div>
+        ${cutRows ? `<div class="trow"><div class="trow-head"><h3>Cut</h3><span>Restore anything you want back</span></div><div class="report findings">${cutRows}</div></div>` : ""}
+        <div class="trow"><div class="trow-head"><h3>Look</h3></div>
+          <div class="row"><label class="field2" for="pc-preset">Grade<select id="pc-preset">${state.catalog.color_presets.filter((x) => x.key !== "auto").map((x) =>
+            `<option value="${x.key}" ${c.preset === x.key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
+            ${slider("exposure", "Brightness")}${slider("contrast", "Contrast")}${slider("saturation", "Color")}${slider("temperature", "Warmth")}</div></div>
+        <div class="trow"><div class="trow-head"><h3>Captions</h3></div>
+          <div class="row"><label class="field2" for="pcap-on">Show<select id="pcap-on"><option value="1" ${plan.captions?.enabled ? "selected" : ""}>On</option><option value="0" ${plan.captions?.enabled ? "" : "selected"}>Off</option></select></label>
+            <label class="field2" for="pcap-style">Style<select id="pcap-style">${(state.catalog.caption_styles || []).map((x) => `<option value="${x.key}" ${plan.captions?.style === x.key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label></div>
+          <div class="row"><input id="fix-from" type="text" placeholder="Wrong word" maxlength="60" style="height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);padding:0 10px;width:140px">
+            <input id="fix-to" type="text" placeholder="Correct word" maxlength="60" style="height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);padding:0 10px;width:140px">
+            <button type="button" class="btn small" data-action="fix-add">Fix caption word</button></div>
+          ${fixes.length ? `<div class="row">${fixes.map(([a, b]) => `<span class="chip">${esc(a)} → ${esc(b)} <button type="button" class="btn icon ghost" data-fixrm="${esc(a)}" aria-label="Remove">×</button></span>`).join("")}</div>` : ""}</div>
+        <div class="row"><button type="button" class="btn primary" data-action="plan-render" ${state.ui.planDirty ? "" : "disabled"}>${icon.wand} Re-render with my changes</button>
+          ${state.ui.planDirty ? `<button type="button" class="btn ghost" data-action="plan-reset">Undo changes</button>` : `<span class="note">No re-analysis: re-rendering reuses everything.</span>`}
+          <span class="spacer"></span>
+          ${rep.captions?.words?.length ? `<button type="button" class="btn small ghost" data-action="dl-srt">Captions (.srt)</button>` : ""}
+          <button type="button" class="btn small ghost" data-action="dl-edl">Edit list (.json)</button></div>
+      </details>`;
+  }
+
+  function download(name, text, type) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  function srtFrom(words) {
+    const ts = (t) => { const ms = Math.round(Math.max(0, t) * 1000); const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s2 = Math.floor(ms / 1000) % 60;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s2).padStart(2, "0")},${String(ms % 1000).padStart(3, "0")}`; };
+    const groups = []; let cur = [];
+    for (const w of words) { if (cur.length >= 7 || (cur.length && (w.t_in - cur[cur.length - 1].t_out > 0.6 || /[.!?]$/.test(cur[cur.length - 1].text)))) { groups.push(cur); cur = []; } cur.push(w); }
+    if (cur.length) groups.push(cur);
+    return groups.map((g, i) => `${i + 1}\n${ts(g[0].t_in)} --> ${ts(g[g.length - 1].t_out)}\n${g.map((w) => w.text).join(" ")}\n`).join("\n");
+  }
+
+  function planChanged() { state.ui.planDirty = true; state.ui.planOpen = true; renderProject(); }
+
   function resultPanel(p, r) {
     const ready = p.renders.filter((x) => x.status === "ready");
     const s = r.settings || {};
     const markIn = state.ui.markIn, markOut = state.ui.markOut;
     let report = "";
-    if (r.kind === "edit" && r.report) {
-      const kept = r.report.segments || [];
-      const removed = (r.report.removed || []).filter((x) => x.src_out - x.src_in >= 0.3);
-      const clipName = (id) => p.clips.find((c) => c.id === id)?.filename || id;
-      report = `<details class="more"><summary>Edit report: kept ${kept.length} part${kept.length === 1 ? "" : "s"}, cut ${removed.length}</summary>
-        <div class="report findings">${[...kept.map((k) => ({ ...k, tag: "keep" })), ...removed.map((x) => ({ ...x, tag: "cut" }))]
-          .sort((a, b) => (a.clip_id + a.src_in.toFixed(2).padStart(8, "0")).localeCompare(b.clip_id + b.src_in.toFixed(2).padStart(8, "0")))
-          .map((x) => `<div class="finding" style="cursor:default"><span class="tc">${fmtTC(x.src_in)} – ${fmtTC(x.src_out)}</span>
-            <span class="what"><b>${esc(x.reason || (x.tag === "keep" ? "Kept" : "Cut"))}</b> <span class="muted">· ${esc(clipName(x.clip_id))}</span></span>
-            <span class="tag ${x.tag === "keep" ? "keep" : "cut"}">${x.tag === "keep" ? "Kept" : "Cut"}</span></div>`).join("")}</div></details>`;
+    if (r.kind === "edit" && r.report) { report = decisionsPanel(p, r);
     } else if (r.kind === "motion" && s.warnings?.length) {
       report = `<div class="banner">${icon.info}<span>Some text had to shrink a lot to fit (${esc(s.warnings.slice(0, 4).join(", "))}). Shorter wording will look better.</span></div>`;
     }
-    const grade = presetByKey(s.color_preset);
+    const grade = presetByKey((r.kind === "edit" && r.report?.color?.preset) || s.color_preset);
     return `
       <section class="panel" aria-label="Your video">
         <div class="panel-head"><h2>Your video</h2><span class="sub">${fmtDur(r.duration_s)} · ${r.width}×${r.height}${r.kind === "edit" && grade ? ` · ${esc(grade.name)}` : ""}</span>
@@ -1050,6 +1145,29 @@
     }
   }
 
+  function currentRender() {
+    const p = state.project;
+    if (!p) return null;
+    return p.renders.find((x) => x.id === state.ui.renderId) || p.renders.find((x) => x.status === "ready") || null;
+  }
+  function p_clipOrder(cid) { return state.project?.clips.find((c) => c.id === cid)?.position ?? 0; }
+  function pickMusic() {
+    let fi = $("#music-input");
+    if (!fi) { fi = document.createElement("input"); fi.type = "file"; fi.id = "music-input"; fi.accept = "audio/*,.mp3,.m4a,.aac,.wav,.ogg"; fi.hidden = true; document.body.appendChild(fi); }
+    fi.click();
+  }
+  async function uploadMusic(file) {
+    if (file.size > 25 * 1024 * 1024) { toast("Music files must be 25 MB or smaller", true); return; }
+    toast("Uploading music…");
+    try {
+      const fd = new FormData(); fd.append("file", file); fd.append("kind", "music");
+      const a = await api.req("POST", "/v1/assets", fd);
+      state.ui.music = { id: a.id, filename: a.filename };
+      toast("Music added");
+      renderProject();
+    } catch (e) { toast(e.message, true); }
+  }
+
   async function startRender() {
     const p = state.project;
     if (!p) return;
@@ -1062,10 +1180,18 @@
     };
     if (p.mode === "edit") {
       body.aspect = opt("aspect", o.aspect || "9:16");
-      body.color_preset = opt("color_preset", o.color_preset || "natural");
+      body.color_preset = opt("color_preset", o.color_preset || "auto");
       const t = opt("target_duration_s", o.target_duration_s ?? "");
       if (t) body.target_duration_s = Number(t);
+      body.prompt = opt("prompt", p.prompt || "");
+      const caps = opt("captions", "auto");
+      if (caps === "on" || caps === true) body.captions = true;
+      else if (caps === "off" || caps === false) body.captions = false;
+      body.caption_style = opt("caption_style", o.caption_style || "word_pop");
+      if (state.ui.music) body.music_asset_id = state.ui.music.id;
+      if (state.ui.planEdit && state.ui.usePlan) body.plan = state.ui.planEdit;
     }
+    state.ui.usePlan = false;
     try {
       await api.createRender(p.id, body);
       state.ui.showOptions = false;
@@ -1363,6 +1489,45 @@
       return;
     }
     if (d.action === "save-template") return saveTemplate();
+    if (d.action === "music-pick") return pickMusic();
+    if (d.action === "music-clear") { state.ui.music = null; return renderProject(); }
+    if (d.pseg && state.ui.planEdit) {
+      const [i, dir] = d.pseg.split(":").map(Number);
+      const segs = state.ui.planEdit.segments;
+      const j = i + dir;
+      if (j >= 0 && j < segs.length) { [segs[i], segs[j]] = [segs[j], segs[i]]; planChanged(); }
+      return;
+    }
+    if (d.pdrop !== undefined && state.ui.planEdit) {
+      const pl = state.ui.planEdit;
+      const [sg] = pl.segments.splice(Number(d.pdrop), 1);
+      pl.removed = [...(pl.removed || []), { clip_id: sg.clip_id, src_in: sg.src_in, src_out: sg.src_out, reason: "Cut by you" }];
+      return planChanged();
+    }
+    if (d.prestore !== undefined && state.ui.planEdit) {
+      const r = currentRender();
+      const x = (r?.report?.removed || []).filter((y) => y.src_out - y.src_in >= 0.3)[Number(d.prestore)];
+      if (!x) return;
+      const pl = state.ui.planEdit;
+      const seg = { clip_id: x.clip_id, src_in: x.src_in, src_out: x.src_out, reason: "Restored by you", punch_in: false, speed: 1 };
+      const order = (c) => p_clipOrder(c);
+      let at = pl.segments.findIndex((sg) => order(sg.clip_id) > order(x.clip_id) || (sg.clip_id === x.clip_id && sg.src_in > x.src_in));
+      if (at < 0) at = pl.segments.length;
+      pl.segments.splice(at, 0, seg);
+      pl.removed = (pl.removed || []).filter((y) => !(y.clip_id === x.clip_id && y.src_in < x.src_out && y.src_out > x.src_in));
+      return planChanged();
+    }
+    if (d.action === "fix-add" && state.ui.planEdit) {
+      const a = $("#fix-from")?.value.trim(), b = $("#fix-to")?.value.trim();
+      if (!a || !b) { toast("Type the wrong word and the correct one", true); return; }
+      state.ui.planEdit.edits = { ...(state.ui.planEdit.edits || {}), [a]: b };
+      return planChanged();
+    }
+    if (d.fixrm && state.ui.planEdit) { delete state.ui.planEdit.edits[d.fixrm]; return planChanged(); }
+    if (d.action === "plan-reset") { state.ui.planEdit = null; state.ui.planDirty = false; return renderProject(); }
+    if (d.action === "plan-render") { state.ui.usePlan = true; t.disabled = true; return startRender(); }
+    if (d.action === "dl-srt") { const r = currentRender(); if (r) download(`${(state.project.title || "captions").slice(0, 40)}.srt`, srtFrom(r.report.captions.words), "text/plain"); return; }
+    if (d.action === "dl-edl") { const r = currentRender(); if (r) download(`${(state.project.title || "edit").slice(0, 40)}.edl.json`, JSON.stringify(r.report, null, 2), "application/json"); return; }
     if (d.action === "add-to-project") { const fi = $("#file-input"); fi.dataset.target = p.id; fi.click(); return; }
     if (d.action === "delete-project") { state.confirm = "delete-project"; return renderProject(); }
     if (d.action === "cancel-confirm") { state.confirm = null; return renderProject(); }
@@ -1463,6 +1628,8 @@
       return markDirty();
     }
     if (el.id === "bk-name" && state.sb) { state.sb.comp.brand.name = el.value; return markDirty(); }
+    if (el.id === "r-prompt") { state.ui.renderOpts.prompt = el.value; return; }
+    if (el.dataset.pcolor) { const lab = el.closest("label")?.querySelector(".mono"); if (lab) lab.textContent = el.value; }
   });
 
   document.addEventListener("change", (e) => {
@@ -1480,6 +1647,15 @@
     if (el.id === "r-aspect") { state.ui.renderOpts.aspect = el.value; return; }
     if (el.id === "r-target") { state.ui.renderOpts.target_duration_s = el.value; return; }
     if (el.id === "r-res") { state.ui.renderOpts.resolution = Number(el.value); return; }
+    if (el.id === "r-caps") { state.ui.renderOpts.captions = el.value; return; }
+    if (el.id === "r-capstyle") { state.ui.renderOpts.caption_style = el.value; return; }
+    if (el.id === "music-input") { const f = el.files[0]; el.value = ""; if (f) uploadMusic(f); return; }
+    if (state.ui.planEdit) {
+      if (el.id === "pc-preset") { state.ui.planEdit.color.preset = el.value; return planChanged(); }
+      if (el.dataset.pcolor) { state.ui.planEdit.color[el.dataset.pcolor] = Number(el.value); return planChanged(); }
+      if (el.id === "pcap-on") { state.ui.planEdit.captions = { ...(state.ui.planEdit.captions || {}), enabled: el.value === "1" }; return planChanged(); }
+      if (el.id === "pcap-style") { state.ui.planEdit.captions = { ...(state.ui.planEdit.captions || {}), style: el.value }; return planChanged(); }
+    }
     if (el.id === "sb-aspect" && state.sb) { state.sb.comp.meta.aspect = el.value; return markDirty(); }
     if (el.dataset.stpl && state.sb) {
       const sc = state.sb.comp.scenes[Number(el.dataset.stpl)];
@@ -1495,6 +1671,10 @@
     if (el.id === "image-input") { addFiles([...el.files]); el.value = ""; return; }
     if (el.id === "mobile-project-select") go(el.value === "new" ? { view: "new" } : { view: "project", id: el.value });
   });
+
+  document.addEventListener("toggle", (e) => {
+    if (e.target.matches?.("[data-plan-details]")) state.ui.planOpen = e.target.open;
+  }, true);
 
   window.addEventListener("hashchange", () => {
     const r = routeFromHash();

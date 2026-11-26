@@ -60,8 +60,22 @@ def catalog() -> dict[str, object]:
     return {
         "ai_enabled": ai_available(),
         "color_presets": [
-            {"key": p.key, "name": p.name, "description": p.description, "css": p.css}
-            for p in COLOR_PRESETS.values()
+            {
+                "key": "auto",
+                "name": "Auto",
+                "css": "none",
+                "description": "The AI picks the look from your prompt and the footage.",
+            },
+            *(
+                {"key": p.key, "name": p.name, "description": p.description, "css": p.css}
+                for p in COLOR_PRESETS.values()
+            ),
+        ],
+        "caption_styles": [
+            {"key": "word_pop", "name": "Pop", "description": "Big words, the spoken word pops in color"},
+            {"key": "karaoke", "name": "Bold", "description": "Heavy uppercase, highlighted word"},
+            {"key": "bold_box", "name": "Boxed", "description": "White on a dark box, easy to read"},
+            {"key": "clean", "name": "Clean", "description": "Simple white captions"},
         ],
         "motion_styles": [
             {
@@ -89,8 +103,10 @@ async def upload_asset(
     file: Annotated[UploadFile, File()],
     kind: Annotated[str, Form()] = "photo",
 ) -> AssetOut:
+    if kind == "music":
+        return await _upload_music(db, user, file)
     if kind not in ("logo", "photo", "screenshot"):
-        raise ApiError(422, "bad_kind", "kind must be logo, photo or screenshot")
+        raise ApiError(422, "bad_kind", "kind must be logo, photo, screenshot or music")
     name = Path(file.filename or "image").name
     if Path(name).suffix.lower() not in IMAGE_TYPES:
         raise ApiError(415, "unsupported_image", "Images must be PNG, JPG or WebP")
@@ -101,6 +117,54 @@ async def upload_asset(
         asset = await run_in_threadpool(store_uploaded_image, get_storage(), user.id, data, name, kind)
     except OSError as exc:
         raise ApiError(422, "unreadable_image", "That file could not be read as an image") from exc
+    db.add(asset)
+    db.commit()
+    return asset_out(asset)
+
+
+AUDIO_TYPES = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav",
+               ".ogg": "audio/ogg"}  # fmt: skip
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+async def _upload_music(db: DbSession, user: CurrentUser, file: UploadFile) -> AssetOut:
+    """A music bed for edits and motion videos. The user confirms they may use it (their upload)."""
+    name = Path(file.filename or "music").name
+    ext = Path(name).suffix.lower()
+    if ext not in AUDIO_TYPES:
+        raise ApiError(415, "unsupported_audio", "Music must be MP3, M4A, AAC, WAV or OGG")
+    data = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(data) > MAX_AUDIO_BYTES:
+        raise ApiError(413, "audio_too_large", "Music files must be 25 MB or smaller")
+
+    def store() -> Asset:
+        import json
+        import subprocess
+        import tempfile
+
+        from autoedit_pipeline.media import FFPROBE
+
+        with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
+            tmp.write(data)
+            tmp.flush()
+            proc = subprocess.run([FFPROBE, "-v", "error", "-select_streams", "a:0", "-show_entries",
+                                   "stream=codec_type:format=duration", "-of", "json", tmp.name],
+                                  capture_output=True, timeout=30, check=False)  # fmt: skip
+        try:
+            meta = json.loads(proc.stdout or b"{}")
+            duration = float(meta.get("format", {}).get("duration") or 0)
+        except ValueError:
+            meta, duration = {}, 0.0
+        if proc.returncode != 0 or not meta.get("streams") or duration <= 0:
+            raise ApiError(422, "unreadable_audio", "That file could not be read as audio")
+        aid = new_id("ast")
+        key = f"users/{user.id}/assets/{aid}{ext}"
+        get_storage().put_bytes(key, data, AUDIO_TYPES[ext])
+        return Asset(id=aid, user_id=user.id, kind="music", filename=name[:255], content_type=AUDIO_TYPES[ext],
+                     storage_key=key, size_bytes=len(data), duration_s=round(duration, 2),
+                     source=f"file:{name[:200]}")  # fmt: skip
+
+    asset = await run_in_threadpool(store)
     db.add(asset)
     db.commit()
     return asset_out(asset)
@@ -236,8 +300,20 @@ def create_render(project_id: str, body: RenderCreate, db: DbSession, user: Curr
             raise ApiError(409, "not_ready", "Wait for every clip to finish analyzing")
         if not any(c.status == "ready" for c in project.clips):
             raise ApiError(409, "not_ready", "No clip could be analyzed")
-        if body.color_preset and body.color_preset not in COLOR_PRESETS:
+        if body.color_preset and body.color_preset != "auto" and body.color_preset not in COLOR_PRESETS:
             raise ApiError(422, "unknown_preset", "Unknown color grade")
+        if body.plan is not None:
+            from autoedit_render.planner import EditPlan
+
+            try:
+                EditPlan.model_validate(body.plan)
+            except ValueError as exc:
+                raise ApiError(422, "invalid_plan", "The edited plan is not valid") from exc
+        music_id = body.music_asset_id if body.music_asset_id is not None else opts.get("music_asset_id")
+        if music_id:
+            m = db.get(Asset, music_id)
+            if m is None or m.user_id != user.id or m.kind != "music":
+                raise ApiError(404, "asset_not_found", "Music file not found. Add it again.")
     else:
         mp = project.motion
         if mp is None or mp.status != "ready" or not mp.composition:
@@ -252,7 +328,12 @@ def create_render(project_id: str, body: RenderCreate, db: DbSession, user: Curr
     settings = {
         "resolution": body.resolution,
         "aspect": body.aspect or opts.get("aspect", "9:16"),
-        "color_preset": body.color_preset or opts.get("color_preset", "natural"),
+        "color_preset": body.color_preset or opts.get("color_preset", "auto"),
+        "prompt": body.prompt if body.prompt is not None else project.prompt,
+        "plan": body.plan,
+        "captions": body.captions if body.captions is not None else opts.get("captions"),
+        "caption_style": body.caption_style or opts.get("caption_style"),
+        "music_asset_id": body.music_asset_id if body.music_asset_id is not None else opts.get("music_asset_id"),
         "target_duration_s": body.target_duration_s if body.target_duration_s is not None else opts.get("target_duration_s"),
         "intro_template_id": body.intro_template_id if body.intro_template_id is not None else opts.get("intro_template_id"),
         "outro_template_id": body.outro_template_id if body.outro_template_id is not None else opts.get("outro_template_id"),

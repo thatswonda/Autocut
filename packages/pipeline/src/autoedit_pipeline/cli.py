@@ -308,6 +308,11 @@ def models_download() -> None:
     for name, path in download_all().items():
         mark = "[green]✓[/]" if path else "[red]✗[/]"
         console.print(f"{mark} {name:6s} {path or 'unavailable (fallback detector will be used)'}")
+    from .transcribe import ensure_whisper, whisper_model_name
+
+    wpath = ensure_whisper()
+    mark = "[green]✓[/]" if wpath else "[red]✗[/]"
+    console.print(f"{mark} whisper-{whisper_model_name()} {wpath or 'unavailable (no transcription)'}")
     console.print(f"[dim]{models_dir()}[/]")
 
 

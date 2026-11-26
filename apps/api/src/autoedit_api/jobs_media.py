@@ -289,7 +289,6 @@ def _set_render(render_id: str, **fields: Any) -> None:
 
 def render_job(render_id: str) -> str:
     from autoedit_motion.render import render_composition
-    from autoedit_render.auto_edl import ClipInput, build_auto_edl
     from autoedit_render.ffrender import join_pieces, poster, render_edl
 
     storage = get_storage()
@@ -340,13 +339,23 @@ def render_job(render_id: str) -> str:
                 files[c.id] = _local(
                     storage, c.upload.storage_key, workdir, f"{c.id}{Path(c.upload.storage_key).suffix}"
                 )
-            edl = build_auto_edl([ClipInput(cid, sigs[cid]) for cid in files], aspect=s.get("aspect", "9:16"),
-                                 color_preset=s.get("color_preset", "natural"),
-                                 target_duration_s=s.get("target_duration_s"), title=project.title)  # fmt: skip
-            r.report = edl.model_dump(mode="json")
+            from .jobs_edit import plan_edit
+
+            edl, report = plan_edit(db, storage, project=project, clips=clips, files=files, sigs=sigs,
+                                    settings=s, progress=lambda f, st: progress(f * 0.3, st))  # fmt: skip
+            r = db.get(Render, render_id)
+            if r is None:
+                return "deleted"
+            r.report = report
             db.commit()
+            music = None
+            if s.get("music_asset_id"):
+                ma = db.get(Asset, s["music_asset_id"])
+                if ma is not None and ma.user_id == project.user_id:
+                    music = _local(storage, ma.storage_key, workdir, f"music{Path(ma.storage_key).suffix}")
             result = render_edl(edl, files, sigs, out, workdir=workdir / "edit", short_edge=short_edge,
-                                intro=intro, outro=outro, progress=lambda f: progress(f, "Cutting and grading"))  # fmt: skip
+                                intro=intro, outro=outro, music=music,
+                                progress=lambda f: progress(0.3 + f * 0.7, "Cutting, grading and captioning"))  # fmt: skip
             width, height, duration = result.width, result.height, result.duration_s
         else:
             mp = db.get(MotionPlan, project.id)
