@@ -25,7 +25,7 @@ from . import __version__
 from .analyze import analyze_clip, default_cache_root
 from .media import MediaError, probe, require_binaries
 from .models import MODELS, download_all, models_dir
-from .plans import fmt_duration, plan_limits
+from .plans import billing_enabled, effective_plan, fmt_duration, plan_limits
 
 app = typer.Typer(
     name="autoedit",
@@ -139,9 +139,9 @@ def analyze(
 
     if not as_json:
         console.print(
-            f"\n[bold]AutoEdit[/] {__version__}  ·  {len(infos)} clip(s)  ·  raw length {_limit_line(total, plan or 'free')}"
+            f"\n[bold]AutoEdit[/] {__version__}  ·  {len(infos)} clip(s)  ·  raw length {_limit_line(total, plan or effective_plan('free'))}"
         )
-        if plan is None:
+        if plan is None and billing_enabled():
             console.print(f"[dim]paid plan: {_limit_line(total, 'paid')}[/]")
     if plan is not None:
         lim = plan_limits(plan)

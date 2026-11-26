@@ -16,6 +16,7 @@ def s3_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestC
     from .conftest import _clear_caches
 
     monkeypatch.setenv("AUTOEDIT_ENV", "test")
+    monkeypatch.setenv("AUTOEDIT_BILLING_ENABLED", "true")  # plan rules under test
     monkeypatch.setenv("AUTOEDIT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("AUTOEDIT_DATABASE_URL", f"sqlite:///{tmp_path / 's3.db'}")
     monkeypatch.setenv("AUTOEDIT_QUEUE_MODE", "inline")

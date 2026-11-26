@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from autoedit_pipeline.plans import PlanLimits, fmt_duration, plan_limits
+from autoedit_pipeline.plans import PlanLimits, billing_enabled, effective_plan, fmt_duration, plan_limits
 from autoedit_schemas.media import MediaInfo
 
 from .db import AnalysisArtifact, Project, ProjectClip, Upload, User
@@ -31,7 +31,7 @@ def get_or_create_user(db: Session, user_id: str) -> User:
 
 
 def limits_for(user: User) -> PlanLimits:
-    return plan_limits(user.plan)
+    return plan_limits(effective_plan(user.plan))
 
 
 def limits_out(limits: PlanLimits) -> LimitsOut:
@@ -125,13 +125,13 @@ def add_clips(
             (
                 f"Adding {fmt_duration(adding)} would bring this project to {fmt_duration(current + adding)}, "
                 f"over the {limits.name} plan limit of {fmt_duration(limits.max_total_raw_s)} total raw length. "
-                "Remove a clip or upgrade."
+                + ("Remove a clip or upgrade." if billing_enabled() else "Remove a clip to make room.")
             ),
             current_total_s=round(current, 3),
             adding_s=round(adding, 3),
             limit_s=limits.max_total_raw_s,
             plan=limits.name,
-            upgrade_available=limits.name == "free",
+            upgrade_available=billing_enabled() and limits.name == "free",
         )
 
     existing = sorted(project.clips, key=lambda c: c.position)

@@ -29,6 +29,7 @@ def live(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient
     monkeypatch.setenv("AUTOEDIT_DATABASE_URL", DB)
     monkeypatch.setenv("AUTOEDIT_REDIS_URL", REDIS)
     monkeypatch.setenv("AUTOEDIT_QUEUE_MODE", "rq")
+    monkeypatch.setenv("AUTOEDIT_BILLING_ENABLED", "true")  # plan rules under test
     monkeypatch.setenv("AUTOEDIT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("AUTOEDIT_STORAGE_BACKEND", "local")
     _clear_caches()

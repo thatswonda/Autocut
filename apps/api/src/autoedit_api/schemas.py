@@ -163,5 +163,6 @@ class ProjectList(BaseModel):
 class MeOut(BaseModel):
     id: str
     plan: str
+    billing_enabled: bool
     limits: LimitsOut
     projects_this_month: int

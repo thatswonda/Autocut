@@ -148,3 +148,36 @@ def test_health(client: TestClient) -> None:
     assert client.get("/healthz").json()["status"] == "ok"
     ready = client.get("/readyz").json()
     assert ready["ready"] is True
+
+
+def test_test_phase_has_no_paywall(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With billing off (the default), nobody hits a monthly quota, a watermark, or an upgrade prompt."""
+    monkeypatch.setenv("AUTOEDIT_BILLING_ENABLED", "false")
+    me = client.get("/v1/me").json()
+    assert me["plan"] == "test" and me["billing_enabled"] is False
+    assert me["limits"]["projects_per_month"] is None
+    assert me["limits"]["watermark"] is False
+    assert me["limits"]["max_total_raw_s"] == 1800
+    for _ in range(5):
+        assert client.post("/v1/projects", json={"mode": "edit"}).status_code == 201
+
+
+def test_test_phase_length_limit_does_not_upsell(
+    client: TestClient, short_clip: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTOEDIT_BILLING_ENABLED", "false")
+    monkeypatch.setenv("AUTOEDIT_TEST_MAX_TOTAL_RAW_S", "10")
+    a, b = upload_file(client, short_clip), upload_file(client, short_clip)
+    r = client.post("/v1/projects", json={"mode": "edit", "upload_ids": [a["id"], b["id"]]})
+    assert r.status_code == 402
+    err = r.json()["error"]
+    assert err["details"]["upgrade_available"] is False
+    assert "upgrade" not in err["message"].lower()
+
+
+def test_web_app_is_served(client: TestClient) -> None:
+    page = client.get("/")
+    assert page.status_code == 200 and "<title>Autocut</title>" in page.text
+    assert client.get("/app.js").status_code == 200
+    assert client.get("/app.css").status_code == 200
+    assert client.get("/healthz").json()["status"] == "ok"  # API routes still win

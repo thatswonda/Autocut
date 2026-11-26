@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Autocut</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M3 3.5l4.2 4.5L3 12.5M8.5 12.5H13" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    Autocut
+  </div>
+  <span class="pill accent" id="phase-pill" hidden><span class="dot"></span>Test phase</span>
+  <div class="spacer"></div>
+  <div class="mobile-projects"><label class="eyebrow" for="mobile-project-select">Project</label><select id="mobile-project-select"></select></div>
+  <span class="who" id="who"></span>
+</header>
+<div class="shell">
+  <aside class="sidebar" aria-label="Projects">
+    <button class="btn primary" id="new-project" type="button">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      New project
+    </button>
+    <div class="eyebrow" style="padding: 6px 4px 0">Projects</div>
+    <nav class="project-list" id="project-list"></nav>
+  </aside>
+  <main id="view" tabindex="-1"></main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="file-input" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.mkv,.webm" multiple hidden>
+<script src="app.js"></script>
+</body>
+</html>

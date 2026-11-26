@@ -7,16 +7,19 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from autoedit_pipeline import __version__ as pipeline_version
 from autoedit_pipeline.media import require_binaries
+from autoedit_pipeline.plans import billing_enabled
 
 from . import __version__
 from .db import create_all, get_engine
@@ -123,13 +126,16 @@ def create_app() -> FastAPI:
         limits = limits_for(user)
         return MeOut(
             id=user.id,
-            plan=user.plan,
+            plan=limits.name,
+            billing_enabled=billing_enabled(),
             limits=limits_out(limits),
             projects_this_month=projects_this_month(db, user),
         )
 
     app.include_router(uploads.router)
     app.include_router(projects.router)
+    # The web app (interim test UI until the M9 Next.js app) is served last so API routes win.
+    app.mount("/", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="web")
     return app
 
 

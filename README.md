@@ -1,6 +1,6 @@
-# AutoEdit
+# Autocut
 
-Raw footage in, finished edit out. AutoEdit watches every frame, listens to the audio, understands the
+Raw footage in, finished edit out. Autocut watches every frame, listens to the audio, understands the
 story, and produces an **Edit Decision List** (EDL): a JSON document that a deterministic FFmpeg
 renderer turns into video. The AI never touches pixels, so every decision is visible, editable and
 cheap to re-render. A second mode turns a business's website, app or product photos into motion
@@ -14,7 +14,14 @@ Full spec: [`docs/PRD.md`](docs/PRD.md) · Decisions: [`docs/DECISIONS.md`](docs
 |---|---|
 | **M0** Skeleton: monorepo, schemas (EDL, Composition, signals), Docker, Compose, CI | ✅ done |
 | **M1** Ingest and signals: multi-clip projects, resumable uploads, probe, proxy, total-length limits, local signal pass, `signals.json`, CLI | ✅ done |
+| Web app (interim): start screen, multi-clip upload, live progress, analysis timeline | ✅ usable now |
 | M2 Transcription · M3 Vision + story · M4 EDL + render · … · M18 | next |
+
+**Test phase:** billing is switched off. Everyone gets the `test` plan: up to 30 minutes of footage per
+project, 20 clips, unlimited projects, no watermark, and no upgrade prompts. No payment provider is
+connected. Set `AUTOEDIT_BILLING_ENABLED=true` later to bring back the free and paid plans.
+
+Internal package and command names keep the PRD's working title (`autoedit`).
 
 ## Quick start
 
@@ -43,6 +50,23 @@ static, music, hand-held shake) and analyzes it.
 
 Other commands: `autoedit probe FILE`, `autoedit validate edl FILE.json`, `autoedit schema export DIR`,
 `autoedit models list`.
+
+### Use the web app
+
+```bash
+AUTOEDIT_QUEUE_MODE=inline uv run uvicorn autoedit_api.main:app
+```
+
+Open http://localhost:8000: drop videos into the start screen, write what you want, press **Start
+editing**, and watch each clip get analyzed. Select a clip to play its preview with the analysis
+timeline under it (scenes, motion, loudness, speech, music, silence, people, dead air, quality).
+Docker Compose (below) serves the same app at the same address.
+
+To rebuild the hosted, server-free preview from any analysis run:
+
+```bash
+uv run python scripts/build_preview.py autoedit-out -o dist/preview
+```
 
 ### Run the API
 
@@ -106,6 +130,7 @@ Stage A of the understanding engine: local analysis only, **$0 AI cost**, about 
 
 ```
 apps/api            FastAPI app, uploads, projects, worker jobs, Alembic migrations
+apps/api/.../web    Interim web app served by the API at /
 apps/web            Next.js UI (M9)
 packages/schemas    EDL, Composition, signals, media info: the single source of truth (+ JSON Schema)
 packages/pipeline   ingest, probe, proxy, Stage A signals, CLI (later: transcribe, vision, story, edl, review)
@@ -116,7 +141,7 @@ packages/motion     templates, composition renderer (M13-M15)
 infra               Dockerfile, docker-compose.yml
 docs                PRD, DECISIONS, PROMPTS
 evals               evaluation sets and status
-scripts             api_demo.py (end-to-end client)
+scripts             api_demo.py (end-to-end client), build_preview.py (hosted preview)
 ```
 
 ## Development

@@ -12,6 +12,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 
+from autoedit_pipeline.plans import billing_enabled
+
 from ..db import Project, session_scope
 from ..deps import CurrentUser, DbSession
 from ..queue import enqueue_clip_analysis
@@ -63,7 +65,7 @@ def create_project(
             "project_quota_exceeded",
             f"The {limits.name} plan includes {limits.projects_per_month} projects per month.",
             projects_per_month=limits.projects_per_month,
-            upgrade_available=True,
+            upgrade_available=billing_enabled(),
         )
     project = Project(
         user_id=user.id,

@@ -37,6 +37,15 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-116 | **Progress:** SSE (`GET /v1/projects/{id}/events`) built by polling project state once a second, closing with a `settled` event. | Works with any number of API and worker processes without a pub/sub dependency. Swap to Redis pub/sub if load requires. |
 | D-117 | **Retention:** `python -m autoedit_api.manage purge` deletes projects older than `AUTOEDIT_RETENTION_DAYS` (30) and abandoned uploads (48 h). | PRD §6. Schedule it daily (cron or a platform scheduler) in deployment. |
 
+## Test phase
+
+| # | Decision | Why |
+|---|---|---|
+| D-201 | **Billing is off by default** (`AUTOEDIT_BILLING_ENABLED=false`). While off, every account gets the `test` plan: 30 min total raw length per project (`AUTOEDIT_TEST_MAX_TOTAL_RAW_S`), 20 clips, no monthly project quota, no watermark, and errors never mention upgrading. `GET /v1/me` reports `billing_enabled`. Plan rules stay in code and are tested with billing on. | Owner's instruction: the product is in a test phase with no payment gateway; they need to use it freely. Turning billing on later is one environment variable. |
+| D-202 | **Interim web app** (vanilla HTML/CSS/JS, no build step) served by the API at `/`, ahead of the M9 Next.js app. Same public API as everything else; SSE progress; resumable uploads; refuses an over-limit clip before uploading by reading its duration in the browser. | Owner asked for a usable preview now. Kept deliberately small so M9 can replace it without migration. |
+| D-203 | **Hosted preview** (`scripts/build_preview.py`): the same app with a stand-in API, a real sample project produced by `autoedit analyze`, and simulated uploads that play the visitor's file but say plainly that it is not analyzed. | A static page cannot reach a server. Showing sample results as if they were the visitor's would be misleading. |
+| D-204 | Product name in the UI and README is **Autocut** (the repository name); packages and the CLI keep the working title `autoedit`. | Renaming packages is churn with no user benefit; it can happen in one pass when the name is final. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |
@@ -45,8 +54,7 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | Upload content moderation (NSFW/abuse screen) | §11 | M11 hardening, as a Stage A pre-check. |
 | Real sign-in (email/phone, Google) | §5.8 | M10. |
 
-## Open question for M10
+## M10 payments: on hold
 
-PRD §5.8 names **Stripe as the primary global processor**, with Paystack/Flutterwave added later for
-regional methods, but the M10 milestone lists only **Paystack/Flutterwave**. Default unless told
-otherwise: Stripe first, with Paystack/Flutterwave behind the same provider interface.
+The owner has put payments on hold for the test phase (D-201). PRD §5.8 (Stripe first) and the M10
+milestone (Paystack/Flutterwave) disagree on the first provider; settle that when M10 starts.

@@ -19,7 +19,25 @@ def _env_float(key: str, default: float) -> float:
     return float(os.environ.get(key, default))
 
 
+def billing_enabled() -> bool:
+    """Test phase: billing is off unless ``AUTOEDIT_BILLING_ENABLED=true``. No payment provider is wired
+    yet, so while it is off every account gets the unrestricted ``test`` plan and nothing asks to upgrade."""
+    return os.environ.get("AUTOEDIT_BILLING_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def effective_plan(plan: str) -> str:
+    return plan if billing_enabled() else "test"
+
+
 def plan_limits(plan: str) -> PlanLimits:
+    if plan == "test":
+        return PlanLimits(
+            name="test",
+            max_total_raw_s=_env_float("AUTOEDIT_TEST_MAX_TOTAL_RAW_S", 30 * 60),
+            max_clips=int(_env_float("AUTOEDIT_MAX_CLIPS", 20)),
+            projects_per_month=None,
+            watermark=False,
+        )
     if plan == "paid":
         return PlanLimits(
             name="paid",
