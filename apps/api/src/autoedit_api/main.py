@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import secrets
+import threading
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -34,6 +37,20 @@ from .settings import get_settings
 log = logging.getLogger("autoedit.api")
 
 
+def _daily_purge() -> None:
+    """Single-server deployments have no scheduler: apply the retention policy once a day."""
+    from .jobs import purge_expired
+
+    while True:
+        try:
+            counts = purge_expired()
+            if any(counts.values()):
+                log.info("retention purge", extra=counts)
+        except Exception:
+            log.exception("retention purge failed")
+        time.sleep(24 * 3600)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> Any:
     configure_logging()
@@ -42,6 +59,16 @@ async def lifespan(_app: FastAPI) -> Any:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     if settings.database_url.startswith("sqlite"):
         create_all()  # Postgres is migrated by Alembic before the app starts
+    if settings.queue_mode == "process":
+        from .jobs import unfinished_clip_ids
+        from .queue import enqueue_clip_analysis
+
+        pending = unfinished_clip_ids()
+        for clip_id in pending:
+            enqueue_clip_analysis(clip_id)
+        if pending:
+            log.info("resumed unfinished analyses", extra={"count": len(pending)})
+        threading.Thread(target=_daily_purge, name="purge", daemon=True).start()
     log.info("api started", extra={"env": settings.env, "queue": settings.queue_mode})
     yield
 
@@ -66,6 +93,29 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["Upload-Offset", "Upload-Length", "X-Request-Id"],
     )
+
+    if settings.access_password:
+        expected = settings.access_password
+
+        @app.middleware("http")
+        async def password_gate(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            if request.url.path == "/healthz":
+                return await call_next(request)
+            header = request.headers.get("Authorization", "")
+            if header.startswith("Basic "):
+                try:
+                    _user, _, given = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+                except (ValueError, UnicodeDecodeError):
+                    given = ""
+                if secrets.compare_digest(given.encode(), expected.encode()):
+                    return await call_next(request)
+            return Response(
+                "Password required",
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Autocut", charset="UTF-8"'},
+            )
 
     @app.middleware("http")
     async def request_context(

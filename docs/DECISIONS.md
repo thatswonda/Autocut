@@ -46,6 +46,17 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-203 | **Hosted preview** (`scripts/build_preview.py`): the same app with a stand-in API, a real sample project produced by `autoedit analyze`, and simulated uploads that play the visitor's file but say plainly that it is not analyzed. | A static page cannot reach a server. Showing sample results as if they were the visitor's would be misleading. |
 | D-204 | Product name in the UI and README is **Autocut** (the repository name); packages and the CLI keep the working title `autoedit`. | Renaming packages is churn with no user benefit; it can happen in one pass when the name is final. |
 
+## Hosting (test phase)
+
+| # | Decision | Why |
+|---|---|---|
+| D-301 | **Render, one web service + one persistent disk** (`render.yaml`): SQLite and local storage on the disk, Frankfurt region, Starter plan. No Redis, no worker service, no managed Postgres. | Cheapest setup that keeps data across deploys for a single tester. Frankfurt is Render's closest region to West Africa. Move to Postgres + R2 + a worker service when more people use it; the code already supports both. |
+| D-302 | **`AUTOEDIT_QUEUE_MODE=process`**: each clip is analyzed in a short-lived child process, one at a time; unfinished clips resume on restart; a child killed for memory marks the clip failed with a clear message. | The API process never returns memory to the OS between clips (measured 437 MB then 557 MB in-process). A child per clip peaks at 293 MB and frees everything on exit. Measured in a 512 MB / 0.5 CPU container: 363 MB peak, no OOM. |
+| D-303 | **`AUTOEDIT_SIGNAL_WORKERS`** (default 4; 1 on Render Starter) runs the four signal passes one after another. | Lower peak memory on small instances at some speed cost. |
+| D-304 | **`AUTOEDIT_ACCESS_PASSWORD`**: HTTP Basic auth on every route except `/healthz`. The browser's own login prompt covers pages, API calls, SSE and video. | A public link must not let strangers upload to the server or see projects. Replaced by real sign-in in M10. |
+| D-305 | **Container entrypoint** chowns the data directory then drops to the unprivileged user; `PORT` honoured; `NUMBA_CACHE_DIR` and `HOME` set for the app user; no BuildKit-only Dockerfile features. | Found while testing under Render-like conditions: mounted disks arrive root-owned, and librosa's numba cache failed on music clips when the package directory is read-only. |
+| D-306 | **Daily retention purge** runs inside the server in process mode. | A single server has no scheduler; the 5 GB disk would otherwise fill. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |

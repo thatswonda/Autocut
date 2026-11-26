@@ -85,7 +85,10 @@ def compute_signals(
             if on_step:
                 on_step(name)
 
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="signals") as pool:
+    # AUTOEDIT_SIGNAL_WORKERS=1 runs the passes one after another: slower, but peak memory drops enough
+    # for small hosts (e.g. a 512 MB instance).
+    workers = max(1, min(4, int(os.environ.get("AUTOEDIT_SIGNAL_WORKERS", "4"))))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="signals") as pool:
         f_video = pool.submit(timed, "video", lambda: analyse_frames(proxy, info))
         f_subjects = pool.submit(timed, "subjects", lambda: track_subjects(proxy, info))
         f_scenes = pool.submit(timed, "scenes", lambda: detect_scene_cuts(proxy, min(info.fps, 30.0)))

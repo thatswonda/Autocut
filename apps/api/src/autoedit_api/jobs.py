@@ -249,3 +249,45 @@ def purge_expired() -> dict[str, int]:
     finally:
         db.close()
     return counts
+
+
+def mark_crashed(clip_id: str, exit_code: int) -> None:
+    """A child job died without recording an outcome (killed for memory, timeout, crash)."""
+    db = session_scope()
+    try:
+        clip = db.get(ProjectClip, clip_id)
+        if clip is None or clip.status in ("ready", "failed"):
+            return
+        clip.status, clip.stage = "failed", None
+        if exit_code in (-9, 137):
+            clip.error_code = "out_of_memory"
+            clip.error = (
+                "The server ran out of memory on this clip. Try a shorter clip or a larger server plan."
+            )
+        elif exit_code == -1:
+            clip.error_code = "timeout"
+            clip.error = "Analysis took too long and was stopped."
+        else:
+            clip.error_code = "internal_error"
+            clip.error = f"Analysis stopped unexpectedly (exit code {exit_code}). Use Retry."
+        db.commit()
+    finally:
+        db.close()
+    log.error("clip %s job process exited with %s", clip_id, exit_code)
+
+
+def unfinished_clip_ids() -> list[str]:
+    """Clips left queued or mid-analysis, e.g. by a restart during a deploy."""
+    db = session_scope()
+    try:
+        rows = db.scalars(
+            select(ProjectClip)
+            .where(ProjectClip.status.in_(("queued", "processing")))
+            .order_by(ProjectClip.created_at)
+        ).all()
+        for clip in rows:
+            clip.status, clip.stage, clip.progress = "queued", None, 0.0
+        db.commit()
+        return [c.id for c in rows]
+    finally:
+        db.close()

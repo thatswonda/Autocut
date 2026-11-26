@@ -49,6 +49,19 @@ def worker(
         WorkerPool([ANALYSIS_QUEUE], connection=redis_conn(), num_workers=n).start(burst=burst)
 
 
+@app.command("run-job")
+def run_job(clip_id: str) -> None:
+    """Analyse one clip in this process (used by AUTOEDIT_QUEUE_MODE=process)."""
+    from .jobs import analyze_clip_job
+    from .logging import configure_logging
+
+    configure_logging()
+    try:
+        analyze_clip_job(clip_id)
+    except Exception:
+        raise typer.Exit(1) from None
+
+
 @app.command()
 def purge() -> None:
     """Delete projects past the retention window and abandoned uploads."""

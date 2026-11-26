@@ -64,9 +64,11 @@ def main() -> None:
     ap.add_argument("--api", default="http://localhost:8000")
     ap.add_argument("--user", default="usr_demo")
     ap.add_argument("--out", type=Path, default=Path("api-demo-out"))
+    ap.add_argument("--password", default=None, help="Access password, if the server sets one")
     args = ap.parse_args()
 
-    with httpx.Client(base_url=args.api, headers={"X-User-Id": args.user}, timeout=120) as client:
+    auth = httpx.BasicAuth("autocut", args.password) if args.password else None
+    with httpx.Client(base_url=args.api, headers={"X-User-Id": args.user}, timeout=120, auth=auth) as client:
         print("Uploading")
         uploads = [upload(client, p) for p in args.clips]
         for u in uploads:

@@ -1,8 +1,11 @@
-"""Job dispatch: RQ + Redis in normal operation, inline for tests and single-process demos."""
+"""Job dispatch: RQ + Redis, a child process per job (single small server), or inline (tests)."""
 
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
+import threading
 from functools import lru_cache
 from typing import Any
 
@@ -20,8 +23,33 @@ def redis_conn() -> Any:
     return Redis.from_url(get_settings().redis_url)
 
 
+_process_lock = threading.Lock()
+
+
+def _run_in_child(clip_id: str) -> None:
+    """Analyse one clip in a fresh Python process; jobs run strictly one at a time."""
+    settings = get_settings()
+    with _process_lock:
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "autoedit_api.manage", "run-job", clip_id],
+                timeout=settings.job_timeout_s,
+                check=False,
+            )
+            code = proc.returncode
+        except subprocess.TimeoutExpired:
+            code = -1
+    if code != 0:
+        from .jobs import mark_crashed
+
+        mark_crashed(clip_id, code)
+
+
 def enqueue_clip_analysis(clip_id: str) -> None:
     settings = get_settings()
+    if settings.queue_mode == "process":
+        threading.Thread(target=_run_in_child, args=(clip_id,), name=f"job-{clip_id}", daemon=True).start()
+        return
     if settings.queue_mode == "inline":
         from .jobs import analyze_clip_job
 
@@ -48,7 +76,7 @@ def enqueue_clip_analysis(clip_id: str) -> None:
 
 
 def ping() -> bool:
-    if get_settings().queue_mode == "inline":
+    if get_settings().queue_mode in ("inline", "process"):
         return True
     try:
         return bool(redis_conn().ping())

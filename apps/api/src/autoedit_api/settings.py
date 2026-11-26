@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     env: Literal["dev", "test", "prod"] = "dev"
     database_url: str = "sqlite:///./data/autoedit.db"
     redis_url: str = "redis://localhost:6379/0"
-    # "rq": background worker via Redis. "inline": run jobs in-process (tests, single-binary demos).
-    queue_mode: Literal["rq", "inline"] = "rq"
+    # "rq": background worker via Redis. "inline": run jobs in-process (tests).
+    # "process": one job at a time in a short-lived child process, no Redis (single small server,
+    # e.g. a Render instance); memory is fully released after every clip.
+    queue_mode: Literal["rq", "inline", "process"] = "rq"
 
     storage_backend: Literal["local", "s3"] = "local"
     data_dir: Path = Path("./data")
@@ -36,6 +38,9 @@ class Settings(BaseSettings):
 
     # M1 has no real sign-in yet (M10). In dev the caller may pick a user with X-User-Id.
     dev_auth: bool = True
+    # When set, every page and API call (except /healthz) asks for this password (HTTP Basic auth,
+    # any username). Use it for a public test deployment before real sign-in exists (M10).
+    access_password: str | None = None
     default_plan: Literal["free", "paid"] = "free"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 

@@ -1,0 +1,35 @@
+# Render Blueprint: one web service, one persistent disk. Deploy from the Render dashboard:
+# New -> Blueprint -> pick this repository -> enter a password when asked -> Apply.
+services:
+  - type: web
+    name: autocut
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile
+    dockerContext: .
+    region: frankfurt          # closest Render region to West Africa
+    plan: starter              # 512 MB RAM. "standard" (2 GB, 1 CPU) analyzes several times faster.
+    healthCheckPath: /healthz
+    autoDeploy: true           # redeploy on every push to main
+    disk:
+      name: autocut-data
+      mountPath: /data         # database, uploads, previews and analysis results live here
+      sizeGB: 5
+    envVars:
+      - key: AUTOEDIT_ACCESS_PASSWORD
+        sync: false            # Render asks for it during setup; you type it in the browser to open the app
+      - key: AUTOEDIT_ENV
+        value: prod
+      - key: AUTOEDIT_QUEUE_MODE
+        value: process         # one clip at a time in its own process: fits 512 MB, no Redis needed
+      - key: AUTOEDIT_SIGNAL_WORKERS
+        value: "1"             # low-memory analysis; raise to 4 on the standard plan
+      - key: AUTOEDIT_DATABASE_URL
+        value: sqlite:////data/autoedit.db
+      - key: AUTOEDIT_STORAGE_BACKEND
+        value: local
+      - key: AUTOEDIT_DATA_DIR
+        value: /data
+      - key: AUTOEDIT_BILLING_ENABLED
+        value: "false"         # test phase: no payments, no limits beyond 30 min per project
+      - key: AUTOEDIT_RETENTION_DAYS
+        value: "30"

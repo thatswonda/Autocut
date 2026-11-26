@@ -51,7 +51,22 @@ static, music, hand-held shake) and analyzes it.
 Other commands: `autoedit probe FILE`, `autoedit validate edl FILE.json`, `autoedit schema export DIR`,
 `autoedit models list`.
 
-### Use the web app
+### Put it online (Render)
+
+The repository includes a Render Blueprint (`render.yaml`): one web service plus a 5 GB disk, in Frankfurt.
+
+1. Sign in at https://dashboard.render.com with GitHub, and allow Render to see the `autocut` repository.
+2. **New** → **Blueprint** → choose `autocut` → Render reads `render.yaml`.
+3. When asked for `AUTOEDIT_ACCESS_PASSWORD`, type the password you want for the app.
+4. **Apply**. The first build takes about 10 minutes. Your link looks like `https://autocut-xxxx.onrender.com`.
+5. Open the link; the browser asks for a username (anything) and the password.
+
+Every push to `main` redeploys automatically. Projects, uploads and results live on the disk and survive
+redeploys. Tested under the Starter plan's limits (512 MB, 0.5 CPU): peak memory 363 MB, about 0.55x real
+time (5.5 minutes of footage analyzed in about 3 minutes). Switch the plan to Standard for faster analysis
+and set `AUTOEDIT_SIGNAL_WORKERS=4`.
+
+### Use the web app on your own computer
 
 ```bash
 AUTOEDIT_QUEUE_MODE=inline uv run uvicorn autoedit_api.main:app
