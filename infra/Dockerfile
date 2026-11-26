@@ -9,11 +9,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never \
     AUTOEDIT_MODELS_DIR=/opt/autoedit/models \
     NUMBA_CACHE_DIR=/tmp/numba-cache \
+    AUTOEDIT_CHROMIUM_PATH=/usr/bin/chromium \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PATH="/app/.venv/bin:$PATH"
 
-# ffmpeg for media, libEGL/GLES for MediaPipe's headless runtime, tini as PID 1.
+# ffmpeg for media, libEGL/GLES for MediaPipe's headless runtime, Chromium for motion-graphics frames,
+# tini as PID 1.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg libegl1 libgles2 tini ca-certificates curl \
+ && apt-get install -y --no-install-recommends ffmpeg libegl1 libgles2 chromium tini ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv==0.11.32

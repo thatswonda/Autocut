@@ -20,9 +20,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
+from autoedit_motion.storyboard import ai_available
 from autoedit_pipeline import __version__ as pipeline_version
 from autoedit_pipeline.media import require_binaries
-from autoedit_motion.storyboard import ai_available
 from autoedit_pipeline.plans import billing_enabled
 
 from . import __version__

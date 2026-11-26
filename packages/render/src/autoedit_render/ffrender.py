@@ -83,9 +83,9 @@ def _frame_filter(src_w: int, src_h: int, out_w: int, out_h: int, center: tuple[
     if abs(src_ar - out_ar) < 0.01:
         return f"scale={out_w}:{out_h}:flags=lanczos"
     if src_ar > out_ar:
-        cw, ch = src_h * out_ar, src_h
+        cw, ch = float(src_h * out_ar), float(src_h)
     else:
-        cw, ch = src_w, src_w / out_ar
+        cw, ch = float(src_w), float(src_w / out_ar)
     kept = (cw * ch) / (src_w * src_h)
     if kept < 0.42 and center is None:
         return (

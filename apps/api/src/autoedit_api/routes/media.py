@@ -60,13 +60,21 @@ def catalog() -> dict[str, object]:
     return {
         "ai_enabled": ai_available(),
         "color_presets": [
-            {"key": p.key, "name": p.name, "description": p.description, "css": p.css} for p in COLOR_PRESETS.values()
+            {"key": p.key, "name": p.name, "description": p.description, "css": p.css}
+            for p in COLOR_PRESETS.values()
         ],
         "motion_styles": [
-            {"key": s.key, "name": s.name, "description": s.description, "colors": list(s.preview_colors),
-             "display_font": s.display_font, "body_font": s.body_font, "uppercase": s.uppercase_headlines}
+            {
+                "key": s.key,
+                "name": s.name,
+                "description": s.description,
+                "colors": list(s.preview_colors),
+                "display_font": s.display_font,
+                "body_font": s.body_font,
+                "uppercase": s.uppercase_headlines,
+            }
             for s in STYLES.values()
-        ],  # fmt: skip
+        ],
         "aspects": ["9:16", "1:1", "4:5", "16:9"],
     }
 
@@ -117,13 +125,17 @@ def _plan(db: DbSession, user: CurrentUser, project_id: str) -> MotionPlan:
 
 
 @router.put("/v1/projects/{project_id}/composition")
-def update_composition(project_id: str, body: dict[str, object], db: DbSession, user: CurrentUser) -> dict[str, object]:
+def update_composition(
+    project_id: str, body: dict[str, object], db: DbSession, user: CurrentUser
+) -> dict[str, object]:
     """Save the user's storyboard edits (text, timing, colors, order). Validated like Claude's output."""
     mp = _plan(db, user, project_id)
     try:
         comp = parse_model(Composition, body)
     except SchemaValidationError as exc:
-        raise ApiError(422, "invalid_composition", "The storyboard is not valid", feedback=exc.feedback) from exc
+        raise ApiError(
+            422, "invalid_composition", "The storyboard is not valid", feedback=exc.feedback
+        ) from exc
     known = {a.id for a in db.scalars(select(Asset).where(Asset.project_id == project_id)).all()}
     missing = {a for sc in comp.scenes for a in sc.content.assets if a not in known}
     if comp.brand.logo_asset and comp.brand.logo_asset not in known:
@@ -138,7 +150,9 @@ def update_composition(project_id: str, body: dict[str, object], db: DbSession, 
 
 
 @router.put("/v1/projects/{project_id}/brand-kit")
-def update_brand_kit(project_id: str, body: BrandKitUpdate, db: DbSession, user: CurrentUser) -> dict[str, object]:
+def update_brand_kit(
+    project_id: str, body: BrandKitUpdate, db: DbSession, user: CurrentUser
+) -> dict[str, object]:
     mp = _plan(db, user, project_id)
     kit = dict(mp.brand_kit or {})
     comp = dict(mp.composition or {})
@@ -146,8 +160,14 @@ def update_brand_kit(project_id: str, body: BrandKitUpdate, db: DbSession, user:
     if body.name is not None:
         kit["name"] = brand["name"] = body.name
     if body.colors is not None:
-        colors = {**(kit.get("colors") or {}), **{k: v.upper() for k, v in body.colors.items()
-                                                  if k in ("primary", "secondary", "accent", "background", "text")}}
+        colors = {
+            **(kit.get("colors") or {}),
+            **{
+                k: v.upper()
+                for k, v in body.colors.items()
+                if k in ("primary", "secondary", "accent", "background", "text")
+            },
+        }
         kit["colors"] = brand["colors"] = colors  # fmt: skip
     if body.logo_asset is not None:
         if body.logo_asset and db.get(Asset, body.logo_asset) is None:
@@ -158,7 +178,9 @@ def update_brand_kit(project_id: str, body: BrandKitUpdate, db: DbSession, user:
         try:
             mp.composition = parse_model(Composition, comp).model_dump(by_alias=True, mode="json")
         except SchemaValidationError as exc:
-            raise ApiError(422, "invalid_brand", "Those brand settings are not valid", feedback=exc.feedback) from exc
+            raise ApiError(
+                422, "invalid_brand", "Those brand settings are not valid", feedback=exc.feedback
+            ) from exc
         mp.version += 1
     mp.brand_kit = kit
     db.commit()
@@ -185,7 +207,9 @@ def regenerate(project_id: str, scene_id: str, body: SceneRegenerate, db: DbSess
 
 
 @router.post("/v1/projects/{project_id}/plan/retry", status_code=202)
-def retry_plan(project_id: str, db: DbSession, user: CurrentUser, background: BackgroundTasks) -> dict[str, str]:
+def retry_plan(
+    project_id: str, db: DbSession, user: CurrentUser, background: BackgroundTasks
+) -> dict[str, str]:
     mp = _plan(db, user, project_id)
     if mp.status in ("queued", "planning"):
         raise ApiError(409, "busy", "The storyboard is already being prepared")
@@ -198,7 +222,9 @@ def retry_plan(project_id: str, db: DbSession, user: CurrentUser, background: Ba
 # --------------------------------------------------------------------------------------- renders
 
 
-@router.post("/v1/projects/{project_id}/renders", status_code=status.HTTP_201_CREATED, response_model=RenderOut)
+@router.post(
+    "/v1/projects/{project_id}/renders", status_code=status.HTTP_201_CREATED, response_model=RenderOut
+)
 def create_render(project_id: str, body: RenderCreate, db: DbSession, user: CurrentUser,
                   background: BackgroundTasks) -> RenderOut:  # fmt: skip
     project = get_project(db, user, project_id, lock=True)
@@ -274,7 +300,9 @@ def _template_out(t: Template) -> TemplateOut:
 
 @router.get("/v1/templates", response_model=list[TemplateOut])
 def list_templates(db: DbSession, user: CurrentUser) -> list[TemplateOut]:
-    rows = db.scalars(select(Template).where(Template.user_id == user.id).order_by(Template.created_at.desc())).all()
+    rows = db.scalars(
+        select(Template).where(Template.user_id == user.id).order_by(Template.created_at.desc())
+    ).all()
     return [_template_out(t) for t in rows]
 
 
@@ -346,6 +374,3 @@ def delete_template(template_id: str, db: DbSession, user: CurrentUser) -> Respo
     db.delete(t)
     db.commit()
     return Response(status_code=204)
-
-
-

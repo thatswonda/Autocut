@@ -23,7 +23,7 @@ def _hex(rgb: tuple[int, int, int]) -> str:
 
 def swatches(data: bytes, k: int = 6) -> list[Swatch]:
     """Dominant colors, ignoring transparent pixels."""
-    im = Image.open(io.BytesIO(data))
+    im: Image.Image = Image.open(io.BytesIO(data))
     im = ImageOps.exif_transpose(im).convert("RGBA")
     im.thumbnail((160, 160))
     raw = im.tobytes()
@@ -37,10 +37,11 @@ def swatches(data: bytes, k: int = 6) -> list[Swatch]:
     counts = sorted(q.getcolors() or [], reverse=True)
     out = []
     for count, idx in counts:
-        r, g, b = pal[idx * 3 : idx * 3 + 3]
+        base = int(idx) * 3  # type: ignore[call-overload]
+        r, g, b = pal[base : base + 3]
         h, light, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
         del h
-        out.append(Swatch(_hex((r, g, b)), count / len(px), s, light))
+        out.append(Swatch(_hex((r, g, b)), int(count) / len(px), s, light))
     return out
 
 
@@ -80,8 +81,8 @@ def _distance(a: str, b: str) -> float:
 
 def prepare_image(data: bytes, max_edge: int = 1600) -> tuple[bytes, str, int, int]:
     """Normalise an uploaded or fetched image: orientation fixed, bounded size. Keeps transparency."""
-    im = Image.open(io.BytesIO(data))
-    im = ImageOps.exif_transpose(im)
+    im: Image.Image = Image.open(io.BytesIO(data))
+    im = ImageOps.exif_transpose(im) or im
     has_alpha = im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info)
     im = im.convert("RGBA" if has_alpha else "RGB")
     im.thumbnail((max_edge, max_edge))

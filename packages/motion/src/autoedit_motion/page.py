@@ -99,8 +99,15 @@ class _Builder:
     def anim(self, sel: str, preset: str, start: float, dur: float, *, stagger: float = 0.0,
              easing: str | None = None, iterations: float = 1) -> None:  # fmt: skip
         self.spec.anims.append(
-            {"sel": sel, "preset": preset, "start": round(max(0.0, start), 4), "dur": round(max(0.05, dur), 4),
-             "stagger": stagger, "easing": easing or self.style.easing, "iter": iterations}  # fmt: skip
+            {
+                "sel": sel,
+                "preset": preset,
+                "start": round(max(0.0, start), 4),
+                "dur": round(max(0.05, dur), 4),
+                "stagger": stagger,
+                "easing": easing or self.style.easing,
+                "iter": iterations,
+            }
         )
 
     # ---------------------------------------------------------------------------------- pieces
@@ -175,7 +182,7 @@ class _Builder:
         align = "center" if self.centered else "left"
         return (
             f'<section class="scene tpl-{tpl} align-{align}" id="{sid}" style="{style_vars}">'
-            f"{bg_html}<div class=\"content\">{body}</div></section>"
+            f'{bg_html}<div class="content">{body}</div></section>'
         )
 
     def background(self, sid: str, t0: float, dur: float) -> str:
@@ -203,20 +210,26 @@ class _Builder:
         self.anim(f"#{sc.id} .plate", "pop", t0 + 0.0, 0.7)
         self.anim(f"#{sc.id} .media", "scale_in", t0 + 0.1 * k, 0.9)
         self.anim(f"#{sc.id} .product", "ken_burns", t0, sc.t_out - t0, easing="linear")
-        media = f'<div class="media-wrap"><i class="plate"></i><div class="media">{image}</div></div>' if image else ""
+        media = (
+            f'<div class="media-wrap"><i class="plate"></i><div class="media">{image}</div></div>'
+            if image
+            else ""
+        )
         return (
             f'{media}<div class="copy">{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 10, 4.5, maxh=26)}'
-            f'{self.text(sc.id, "subtext", c.subtext, 4.4, 3)}</div>'
+            f"{self.text(sc.id, 'subtext', c.subtext, 4.4, 3)}</div>"
         )
 
     def tpl_device_mockup(self, sc: Scene, t0: float, k: float) -> str:
         c = sc.content
         shot = self.img(c.assets[0] if c.assets else None, "screen")
         self.anim(f"#{sc.id} .phone", "rise", t0 + 0.05 * k, 0.9)
-        self.anim(f"#{sc.id} .screen", "scroll", t0 + 0.9, max(0.5, sc.t_out - t0 - 1.2), easing="ease-in-out")
+        self.anim(
+            f"#{sc.id} .screen", "scroll", t0 + 0.9, max(0.5, sc.t_out - t0 - 1.2), easing="ease-in-out"
+        )
         return (
             f'<div class="copy">{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 8.5, 4, maxh=24)}'
-            f'{self.text(sc.id, "subtext", c.subtext, 4.2, 3)}</div>'
+            f"{self.text(sc.id, 'subtext', c.subtext, 4.2, 3)}</div>"
             f'<div class="phone"><div class="notch"></div><div class="glass">{shot}</div></div>'
         )
 
@@ -228,7 +241,9 @@ class _Builder:
             f'<span class="it fit" dir="auto" data-max="5" data-min="3" data-maxh="13" data-label="{sc.id} item">{_e(it)}</span></li>'
             for it in c.items[:5]
         )
-        self.anim(f"#{sc.id} .items li", self.style.item_anim, t0 + 0.55 * k, 0.55, stagger=0.22 * max(k, 0.6))
+        self.anim(
+            f"#{sc.id} .items li", self.style.item_anim, t0 + 0.55 * k, 0.55, stagger=0.22 * max(k, 0.6)
+        )
         return (
             f"{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 9, 4, maxh=24)}"
             f'<ul class="items">{items}</ul>'
@@ -243,8 +258,15 @@ class _Builder:
             if parsed:
                 prefix, num, dec, suffix = parsed
                 self.spec.counters.append(
-                    {"id": vid, "to": num, "dec": dec, "prefix": prefix, "suffix": suffix,
-                     "start": t0 + 0.35 + 0.2 * i, "dur": 1.4}  # fmt: skip
+                    {
+                        "id": vid,
+                        "to": num,
+                        "dec": dec,
+                        "prefix": prefix,
+                        "suffix": suffix,
+                        "start": t0 + 0.35 + 0.2 * i,
+                        "dur": 1.4,
+                    }
                 )
             cells.append(
                 f'<div class="stat"><div class="value fit" id="{vid}" data-max="15" data-min="6" '
@@ -263,8 +285,8 @@ class _Builder:
         self.anim(f"#{sc.id} .qmark", "pop", t0 + 0.25 * k, 0.6)
         return (
             f'<div class="card"><div class="qmark">&ldquo;</div>'
-            f'{self.headline(sc.id, c.headline, 7, 3.6, cls="quote", maxh=50)}'
-            f'{self.text(sc.id, "subtext", c.subtext, 3.8, 2.8)}</div>'
+            f"{self.headline(sc.id, c.headline, 7, 3.6, cls='quote', maxh=50)}"
+            f"{self.text(sc.id, 'subtext', c.subtext, 3.8, 2.8)}</div>"
         )
 
     def tpl_price_offer(self, sc: Scene, t0: float, k: float) -> str:
@@ -279,8 +301,8 @@ class _Builder:
         )
         return (
             f"{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 8, 4, maxh=20)}{price}"
-            f'{self.text(sc.id, "subtext", c.subtext, 4.2, 3)}'
-            f'{f"<div class=chips>{chips}</div>" if chips else ""}'
+            f"{self.text(sc.id, 'subtext', c.subtext, 4.2, 3)}"
+            f"{f'<div class=chips>{chips}</div>' if chips else ''}"
         )
 
     def tpl_logo_sting(self, sc: Scene, t0: float, k: float) -> str:
@@ -291,7 +313,7 @@ class _Builder:
         tagline = c.headline or c.subtext
         return (
             f'<div class="sting"><i class="ring"></i><i class="ring r2"></i>{self.logo("logo-hero")}</div>'
-            f'{self.text(sc.id, "subtext", tagline, 5, 3)}'
+            f"{self.text(sc.id, 'subtext', tagline, 5, 3)}"
         )
 
     def tpl_cta_end_card(self, sc: Scene, t0: float, k: float) -> str:
@@ -302,7 +324,7 @@ class _Builder:
         cta = f'<div class="cta" dir="auto">{_e(c.cta)}</div>' if c.cta else ""
         return (
             f"{self.logo('logo-small')}{self.headline(sc.id, c.headline, 11, 5, maxh=36)}{cta}"
-            f'{self.text(sc.id, "subtext", c.subtext, 4, 2.8)}'
+            f"{self.text(sc.id, 'subtext', c.subtext, 4, 2.8)}"
         )
 
     # ------------------------------------------------------------------------------------- page
@@ -316,9 +338,11 @@ class _Builder:
             layers.append(self.scene(sc, i, prev, surf))
             # Visibility window: an incoming scene shows from the start of the outgoing transition.
             pd = prev.transition_out.duration_s if prev and prev.transition_out.type != "cut" else 0.0
-            show_from = (min(sc.t_in, prev.t_out - pd) if prev else 0.0)
+            show_from = min(sc.t_in, prev.t_out - pd) if prev else 0.0
             show_to = sc.t_out if i < n - 1 else self.comp.meta.duration_s + 1
-            self.spec.scenes.append({"id": sc.id, "from": round(show_from, 4), "to": round(show_to, 4), "z": n - i})
+            self.spec.scenes.append(
+                {"id": sc.id, "from": round(show_from, 4), "to": round(show_to, 4), "z": n - i}
+            )
             tr = sc.transition_out
             if i < n - 1 and tr.type != "cut" and tr.duration_s > 0:
                 t = sc.t_out - tr.duration_s

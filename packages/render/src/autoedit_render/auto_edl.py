@@ -78,10 +78,20 @@ def build_auto_edl(clips: list[ClipInput], *, aspect: str = "9:16", color_preset
         if not kept:
             kept = [(0.0, dur)]  # never drop a whole clip silently
         for a, b, reason in cuts:
-            removed.append(RemovedRange(clip_id=ci.clip_id, src_in=round(a, 3), src_out=round(min(b, dur), 3), reason=reason))
+            removed.append(
+                RemovedRange(
+                    clip_id=ci.clip_id, src_in=round(a, 3), src_out=round(min(b, dur), 3), reason=reason
+                )
+            )
         for a, b in kept:
             rows = [r for r in sig.per_second if a <= r.t < b]
-            why = "Speech" if any((r.speech or 0) > 0.3 for r in rows) else "Action on screen" if any(r.motion > 0.01 for r in rows) else "Context"
+            why = (
+                "Speech"
+                if any((r.speech or 0) > 0.3 for r in rows)
+                else "Action on screen"
+                if any(r.motion > 0.01 for r in rows)
+                else "Context"
+            )
             pieces.append((ci.clip_id, round(a, 3), round(b, 3), why, _score(sig, a, b)))
 
     by_id = {c.clip_id: c.signals for c in clips}
@@ -91,7 +101,9 @@ def build_auto_edl(clips: list[ClipInput], *, aspect: str = "9:16", color_preset
         while total > target_duration_s * 1.05 and len(pieces) > 1:
             idx = min(range(1, len(pieces)), key=lambda i: pieces[i][4])
             cid, a, b, _, _ = pieces.pop(idx)
-            removed.append(RemovedRange(clip_id=cid, src_in=a, src_out=b, reason="Trimmed to reach the target length"))
+            removed.append(
+                RemovedRange(clip_id=cid, src_in=a, src_out=b, reason="Trimmed to reach the target length")
+            )
             total -= b - a
         if total > target_duration_s * 1.05:
             cid, a, b, why, sc = pieces[-1]
@@ -99,11 +111,18 @@ def build_auto_edl(clips: list[ClipInput], *, aspect: str = "9:16", color_preset
             new_b = max(a + MIN_PIECE_S, b - excess)
             # End on a scene cut or speech boundary if one is close.
             sig = by_id[cid]
-            marks = [c for c in sig.scene_cuts] + [r.t_out for r in sig.speech_ranges]
+            marks = list(sig.scene_cuts) + [r.t_out for r in sig.speech_ranges]
             near = [m for m in marks if a + MIN_PIECE_S <= m <= new_b + 1.0]
             if near:
                 new_b = min(near, key=lambda m: abs(m - new_b))
-            removed.append(RemovedRange(clip_id=cid, src_in=round(new_b, 3), src_out=b, reason="Trimmed to reach the target length"))
+            removed.append(
+                RemovedRange(
+                    clip_id=cid,
+                    src_in=round(new_b, 3),
+                    src_out=b,
+                    reason="Trimmed to reach the target length",
+                )
+            )
             pieces[-1] = (cid, a, round(new_b, 3), why, sc)
 
     segments = [
@@ -114,10 +133,10 @@ def build_auto_edl(clips: list[ClipInput], *, aspect: str = "9:16", color_preset
     return EDL(
         meta={"title": title, "summary": "Rule-based first cut from the analysis.", "aspect": aspect,
               "total_raw_duration_s": round(total_raw, 3), "target_duration_s": target_duration_s,
-              "style": "auto"},  # type: ignore[arg-type]
+              "style": "auto"},
         clips=refs,
         segments=segments,
         removed=removed,
         color=Color(preset=color_preset),
-        captions={"enabled": False},  # type: ignore[arg-type]
+        captions={"enabled": False},
     )  # fmt: skip

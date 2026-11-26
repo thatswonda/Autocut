@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
@@ -32,6 +32,7 @@ from ..schemas import (
     ProjectOut,
 )
 from ..services import (
+    SETTLED,
     add_clips,
     artifact,
     clip_out,
@@ -42,7 +43,6 @@ from ..services import (
     limits_for,
     project_out,
     project_status,
-    SETTLED,
     project_summary,
     projects_this_month,
     remove_clip,
@@ -74,7 +74,9 @@ def create_project(
                 "Confirm that you own or are authorized to use this brand and its assets.",
             )  # fmt: skip
         if not (body.source_urls or body.asset_ids or body.prompt.strip()):
-            raise ApiError(422, "nothing_to_work_with", "Add a website link, some images, or describe the business.")
+            raise ApiError(
+                422, "nothing_to_work_with", "Add a website link, some images, or describe the business."
+            )
         if isinstance(options, MotionOptions) and get_style(options.style).key != options.style:
             raise ApiError(422, "unknown_style", f"Unknown motion style '{options.style}'")
     limits = limits_for(user)

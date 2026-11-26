@@ -91,7 +91,9 @@ def fetch(url: str, *, max_bytes: int = MAX_HTML_BYTES, accept: str = "text/html
         follow_redirects=False,
     ) as client:
         if check_robots and not robots_allows(current, client):
-            raise FetchError("robots_disallowed", "This site's robots.txt asks automated tools not to read that page")
+            raise FetchError(
+                "robots_disallowed", "This site's robots.txt asks automated tools not to read that page"
+            )
         for _ in range(MAX_REDIRECTS + 1):
             with client.stream("GET", current) as resp:
                 if resp.is_redirect:

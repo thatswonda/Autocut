@@ -41,8 +41,10 @@ class BrandKit:
             "logo_key": self.logo_key,
             "language": self.language,
             "sources": [{"id": s.source_id, "url": s.url, "title": s.title} for s in self.sites],
-            "images": [{"key": i.key, "kind": i.kind, "source": i.source, "width": i.width, "height": i.height}
-                       for i in self.images],  # fmt: skip
+            "images": [
+                {"key": i.key, "kind": i.kind, "source": i.source, "width": i.width, "height": i.height}
+                for i in self.images
+            ],
             "warnings": self.warnings,
         }
 
@@ -90,9 +92,13 @@ def build_kit(urls: list[str], uploads: list[ImageAsset]) -> BrandKit:
     logo = next((im for im in kit.images if im.kind == "logo"), None)
     kit.logo_key = logo.key if logo else None
     theme = kit.sites[0].theme_color if kit.sites else None
-    kit.colors = brand_colors(logo.data if logo else None, [im.data for im in kit.images if im.kind != "logo"], theme)
+    kit.colors = brand_colors(
+        logo.data if logo else None, [im.data for im in kit.images if im.kind != "logo"], theme
+    )
     if not logo:
-        kit.warnings.append("No logo found: the brand name is shown in type instead. Upload a logo to use it.")
+        kit.warnings.append(
+            "No logo found: the brand name is shown in type instead. Upload a logo to use it."
+        )
     if urls and not kit.sites:
         kit.warnings.append("None of the links could be read; the video uses only your prompt and files.")
     return kit

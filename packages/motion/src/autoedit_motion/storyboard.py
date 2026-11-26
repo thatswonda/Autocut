@@ -100,8 +100,13 @@ def max_cost() -> float:
     return float(os.environ.get("AUTOEDIT_MAX_JOB_COST_USD", "1.00"))
 
 
+def fake_ai() -> bool:
+    """Development only: AUTOEDIT_FAKE_AI=1 swaps Claude for a canned stand-in (no API calls, no cost)."""
+    return os.environ.get("AUTOEDIT_FAKE_AI") == "1"
+
+
 def ai_available() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+    return fake_ai() or bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
 # --------------------------------------------------------------------------------------- client
@@ -120,19 +125,23 @@ class ClaudeClient:
 
         model = model_name()
         try:
-            resp = self.client.beta.messages.create(
+            resp = self.client.beta.messages.create(  # type: ignore[call-overload]
                 model=model,
                 max_tokens=16000,
                 system=system,
-                messages=messages,  # type: ignore[arg-type]
-                output_config={"effort": os.environ.get("CLAUDE_EFFORT", "medium")},  # type: ignore[typeddict-item]
+                messages=messages,
+                output_config={"effort": os.environ.get("CLAUDE_EFFORT", "medium")},
                 betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",  # type: ignore[arg-type]
+                fallbacks="default",
             )
         except anthropic.AuthenticationError as exc:
-            raise StoryboardError("ai_auth", "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.") from exc
+            raise StoryboardError(
+                "ai_auth", "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY."
+            ) from exc
         except anthropic.RateLimitError as exc:
-            raise StoryboardError("ai_rate_limited", "Claude is busy right now. Try again in a minute.") from exc
+            raise StoryboardError(
+                "ai_rate_limited", "Claude is busy right now. Try again in a minute."
+            ) from exc
         except anthropic.APIStatusError as exc:
             raise StoryboardError("ai_error", f"Claude request failed ({exc.status_code}).") from exc
         except anthropic.APIConnectionError as exc:
@@ -149,6 +158,10 @@ class ClaudeClient:
 
 
 def CLIENT_FACTORY() -> Any:  # noqa: N802 - replaced in tests with a fake client
+    if fake_ai():
+        from .testing import FakeClaude
+
+        return FakeClaude()
     return ClaudeClient()
 
 
@@ -158,7 +171,7 @@ def CLIENT_FACTORY() -> Any:  # noqa: N802 - replaced in tests with a fake clien
 def _image_block(path: Path) -> dict[str, Any]:
     from PIL import Image
 
-    im = Image.open(path)
+    im: Image.Image = Image.open(path)
     im = im.convert("RGB")
     im.thumbnail((768, 768))
     buf = io.BytesIO()
@@ -189,7 +202,12 @@ def _user_content(req: StoryboardRequest) -> list[dict[str, Any]]:
             blocks.append({"type": "text", "text": f"Asset id `{im.key}` ({im.kind}, from {im.source}):"})
             blocks.append(_image_block(im.path))
     else:
-        blocks.append({"type": "text", "text": "# Images\n(none: use text-only templates and logo_sting with the brand name)"})
+        blocks.append(
+            {
+                "type": "text",
+                "text": "# Images\n(none: use text-only templates and logo_sting with the brand name)",
+            }
+        )
     return blocks
 
 
@@ -263,9 +281,13 @@ def check_scene(sc: Scene, req: StoryboardRequest, source_blob: str) -> list[str
         for tok in _NUM_TOKEN.findall(text):
             d = _digits(tok)
             if len(d) >= 1 and d not in source_digits and d.lstrip("0") not in source_digits:
-                problems.append(f"{sc.id}: '{tok}' in \"{text}\" does not appear in the sources or brief; remove it or use a sourced figure")
+                problems.append(
+                    f"{sc.id}: '{tok}' in \"{text}\" does not appear in the sources or brief; remove it or use a sourced figure"
+                )
     if sc.template == "testimonial_card" and _norm(c.headline) not in _norm(source_blob):
-        problems.append(f"{sc.id}: the testimonial is not a verbatim quote from the sources; remove the scene or use an exact quote")
+        problems.append(
+            f"{sc.id}: the testimonial is not a verbatim quote from the sources; remove the scene or use an exact quote"
+        )
     valid_sources = {"prompt", *(sid for sid, _ in req.sources), *(im.source for im in req.images)}
     for cl in sc.claims:
         if cl.source not in valid_sources and not any(cl.source.startswith(v) for v in valid_sources):
@@ -288,7 +310,9 @@ def _normalise(comp_json: dict[str, Any], req: StoryboardRequest, brand: dict[st
     meta = comp_json.setdefault("meta", {})
     meta.update({"aspect": req.aspect, "duration_s": req.duration_s, "style": req.style, "fps": 30,
                  "language": req.language, "goal": req.goal})  # fmt: skip
-    comp_json["brand"] = brand
+    # The brand kit wins, but keep the name Claude read from the brief when the kit has none.
+    claude_name = str((comp_json.get("brand") or {}).get("name") or "")[:200]
+    comp_json["brand"] = {**brand, "name": brand.get("name") or claude_name}
     scenes = comp_json.get("scenes") or []
     # Snap tiny timing gaps/overlaps so a near-miss from the model does not fail validation.
     t = 0.0
@@ -323,7 +347,9 @@ def generate_composition(req: StoryboardRequest, brand: dict[str, Any], *, clien
     for attempt in range(2):
         text, raw = client.complete(system, messages, usage)
         if usage.cost_usd > max_cost():
-            raise StoryboardError("cost_ceiling", f"Stopped: this storyboard cost more than ${max_cost():.2f}.")
+            raise StoryboardError(
+                "cost_ceiling", f"Stopped: this storyboard cost more than ${max_cost():.2f}."
+            )
         try:
             data = json.loads(_extract_json(text))
             comp = parse_model(Composition, _normalise(data, req, brand))
@@ -340,7 +366,9 @@ def generate_composition(req: StoryboardRequest, brand: dict[str, Any], *, clien
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": "Fix these problems and return the full corrected JSON only:\n- "
                              + "\n- ".join(problems[:30])})  # fmt: skip
-    raise StoryboardError("invalid_storyboard", "Claude's storyboard broke the rules twice: " + "; ".join(last_problems[:5]))
+    raise StoryboardError(
+        "invalid_storyboard", "Claude's storyboard broke the rules twice: " + "; ".join(last_problems[:5])
+    )
 
 
 def regenerate_scene(comp: Composition, scene_id: str, note: str, req: StoryboardRequest, *,
@@ -351,9 +379,13 @@ def regenerate_scene(comp: Composition, scene_id: str, note: str, req: Storyboar
     if target is None:
         raise StoryboardError("scene_not_found", "That scene does not exist")
     system = (PROMPTS / "scene.v1.md").read_text()
-    content = _user_content(req) + [
+    content = [
+        *_user_content(req),
         {"type": "text", "text": "# Current storyboard\n" + comp.model_dump_json(by_alias=True)},
-        {"type": "text", "text": f"# Scene to change: {scene_id}\n# User's note\n{note.strip() or 'Make it better.'}"},
+        {
+            "type": "text",
+            "text": f"# Scene to change: {scene_id}\n# User's note\n{note.strip() or 'Make it better.'}",
+        },
     ]
     messages: list[dict[str, Any]] = [{"role": "user", "content": content}]
     blob = req.brief + "\n" + "\n".join(body for _, body in req.sources)
@@ -367,7 +399,9 @@ def regenerate_scene(comp: Composition, scene_id: str, note: str, req: Storyboar
             sc_json.update({"id": target.id, "t_in": target.t_in, "t_out": target.t_out})
             new_scene = parse_model(Scene, sc_json)
             data = comp.model_dump(by_alias=True)
-            data["scenes"] = [new_scene.model_dump(by_alias=True) if s["id"] == scene_id else s for s in data["scenes"]]
+            data["scenes"] = [
+                new_scene.model_dump(by_alias=True) if s["id"] == scene_id else s for s in data["scenes"]
+            ]
             new_comp = parse_model(Composition, data)
             problems = check_scene(new_scene, req, blob)
         except json.JSONDecodeError as exc:
@@ -378,5 +412,13 @@ def regenerate_scene(comp: Composition, scene_id: str, note: str, req: Storyboar
             return new_comp
         if attempt == 0:
             messages.append({"role": "assistant", "content": raw})
-            messages.append({"role": "user", "content": "Fix these problems and return the scene JSON only:\n- " + "\n- ".join(problems)})
-    raise StoryboardError("invalid_scene", "Claude's revised scene broke the rules twice: " + "; ".join(problems[:4]))
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Fix these problems and return the scene JSON only:\n- "
+                    + "\n- ".join(problems),
+                }
+            )
+    raise StoryboardError(
+        "invalid_scene", "Claude's revised scene broke the rules twice: " + "; ".join(problems[:4])
+    )

@@ -32,7 +32,7 @@ JOBS: dict[str, str] = {
 
 def job_function(kind: str) -> Callable[[str], Any]:
     module, name = JOBS[kind].split(":")
-    return getattr(importlib.import_module(module), name)  # type: ignore[no-any-return]
+    return getattr(importlib.import_module(module), name)  # type: ignore[no-any-return,unused-ignore]
 
 
 @lru_cache
@@ -69,7 +69,9 @@ def enqueue(kind: str, obj_id: str) -> None:
     if kind not in JOBS:
         raise ValueError(f"unknown job kind {kind}")
     if settings.queue_mode == "process":
-        threading.Thread(target=_run_in_child, args=(kind, obj_id), name=f"job-{kind}-{obj_id}", daemon=True).start()
+        threading.Thread(
+            target=_run_in_child, args=(kind, obj_id), name=f"job-{kind}-{obj_id}", daemon=True
+        ).start()
         return
     if settings.queue_mode == "inline":
         try:

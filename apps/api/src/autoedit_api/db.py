@@ -90,7 +90,9 @@ class Project(Base):
         back_populates="project", order_by="ProjectClip.position", cascade="all, delete-orphan"
     )
     motion: Mapped[MotionPlan | None] = relationship(uselist=False, cascade="all, delete-orphan")
-    renders: Mapped[list[Render]] = relationship(order_by="Render.created_at.desc()", cascade="all, delete-orphan")
+    renders: Mapped[list[Render]] = relationship(
+        order_by="Render.created_at.desc()", cascade="all, delete-orphan"
+    )
 
 
 class ProjectClip(Base):
@@ -190,7 +192,9 @@ class MotionPlan(Base):
     progress: Mapped[float] = mapped_column(Float, default=0.0)
     error_code: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
-    source_urls: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {"urls": [...], "asset_ids": [...]}
+    source_urls: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict
+    )  # {"urls": [...], "asset_ids": [...]}
     brand_kit: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     sources_text: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # {"items": [[source_id, text], ...]}
     composition: Mapped[dict[str, Any] | None] = mapped_column(JSON)

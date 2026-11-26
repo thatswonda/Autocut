@@ -32,7 +32,7 @@ def _png(color: tuple[int, int, int], size: tuple[int, int] = (200, 200)) -> byt
 
 
 class Handler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         if self.path == "/robots.txt":
             body, ctype = b"User-agent: *\nDisallow: /private\n", "text/plain"
         elif self.path == "/logo.png":
@@ -70,7 +70,11 @@ def site(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
 
 def test_ssrf_blocked_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTOEDIT_ALLOW_PRIVATE_FETCH", raising=False)
-    for url in ("http://127.0.0.1/", "http://localhost:8000/admin", "http://169.254.169.254/latest/meta-data"):
+    for url in (
+        "http://127.0.0.1/",
+        "http://localhost:8000/admin",
+        "http://169.254.169.254/latest/meta-data",
+    ):
         with pytest.raises(FetchError) as exc:
             check_url(url)
         assert exc.value.code == "blocked_address"

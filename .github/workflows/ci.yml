@@ -37,6 +37,7 @@ jobs:
       AUTOEDIT_MODELS_DIR: ${{ github.workspace }}/.models
       AUTOEDIT_IT_DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/autoedit_it
       AUTOEDIT_IT_REDIS_URL: redis://localhost:6379/0
+      AUTOEDIT_CHROMIUM_PATH: /usr/bin/google-chrome  # preinstalled on GitHub's Ubuntu runners
     steps:
       - uses: actions/checkout@v4
       - name: System packages

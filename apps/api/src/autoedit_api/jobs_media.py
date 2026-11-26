@@ -25,7 +25,7 @@ from autoedit_motion.storyboard import (
 from autoedit_motion.styles import get_style
 from autoedit_schemas import Composition, Signals, parse_model
 
-from .db import Asset, MotionPlan, Project, ProjectClip, Render, Template, UsageEvent, new_id, session_scope
+from .db import Asset, MotionPlan, Project, Render, Template, UsageEvent, new_id, session_scope
 from .settings import get_settings
 from .storage import Storage, get_storage, project_prefix
 
@@ -66,8 +66,12 @@ def _storyboard_request(project: Project, mp: MotionPlan, image_assets: list[Ass
     kit = mp.brand_kit or {}
     sources = [(sid, text) for sid, text in (mp.sources_text or {}).get("items", [])]
     images = [
-        ImageInput(key=a.id, kind=a.kind, path=_local(storage, a.storage_key, workdir, f"{a.id}{Path(a.storage_key).suffix}"),
-                   source=a.source or f"file:{a.filename}")  # fmt: skip
+        ImageInput(
+            key=a.id,
+            kind=a.kind,
+            path=_local(storage, a.storage_key, workdir, f"{a.id}{Path(a.storage_key).suffix}"),
+            source=a.source or f"file:{a.filename}",
+        )
         for a in image_assets
     ]
     return StoryboardRequest(
@@ -105,15 +109,30 @@ def motion_plan_job(project_id: str) -> str:
         mp = db.get(MotionPlan, project_id)
         if project is None or mp is None:
             return "deleted"
-        mp.status, mp.stage, mp.progress, mp.error_code, mp.error = "planning", "Reading your sources", 0.1, None, None
+        mp.status, mp.stage, mp.progress, mp.error_code, mp.error = (
+            "planning",
+            "Reading your sources",
+            0.1,
+            None,
+            None,
+        )
         db.commit()
 
         urls = list((mp.source_urls or {}).get("urls", []))
         asset_ids = list((mp.source_urls or {}).get("asset_ids", []))
-        uploaded = db.scalars(select(Asset).where(Asset.id.in_(asset_ids), Asset.user_id == project.user_id)).all()
+        uploaded = db.scalars(
+            select(Asset).where(Asset.id.in_(asset_ids), Asset.user_id == project.user_id)
+        ).all()
         uploads = [
-            ImageAsset(key=a.id, kind=a.kind, data=storage.read_bytes(a.storage_key), ext=Path(a.storage_key).suffix,
-                       width=a.width or 0, height=a.height or 0, source=f"file:{a.filename}")  # fmt: skip
+            ImageAsset(
+                key=a.id,
+                kind=a.kind,
+                data=storage.read_bytes(a.storage_key),
+                ext=Path(a.storage_key).suffix,
+                width=a.width or 0,
+                height=a.height or 0,
+                source=f"file:{a.filename}",
+            )
             for a in uploaded
         ]
         kit = build_kit(urls, uploads)
@@ -141,8 +160,11 @@ def motion_plan_job(project_id: str) -> str:
             "logo_asset": logo_asset,
             "language": kit.language,
             "sources": [{"id": s.source_id, "url": s.url, "title": s.title} for s in kit.sites],
-            "images": [{"asset_id": key_to_asset[i.key], "kind": i.kind, "source": i.source} for i in kit.images
-                       if i.key in key_to_asset],  # fmt: skip
+            "images": [
+                {"asset_id": key_to_asset[i.key], "kind": i.kind, "source": i.source}
+                for i in kit.images
+                if i.key in key_to_asset
+            ],
             "warnings": kit.warnings,
         }
         mp = db.get(MotionPlan, project_id)
@@ -165,6 +187,8 @@ def motion_plan_job(project_id: str) -> str:
         mp = db.get(MotionPlan, project_id)
         assert mp is not None
         mp.composition = comp.model_dump(by_alias=True, mode="json")
+        if not brand_kit.get("name") and comp.brand.name:
+            mp.brand_kit = {**brand_kit, "name": comp.brand.name}
         mp.version += 1
         mp.status, mp.stage, mp.progress = "ready", None, 1.0
         mp.cost_usd = round((mp.cost_usd or 0) + usage.cost_usd, 4)
@@ -313,7 +337,9 @@ def render_job(render_id: str) -> str:
                 if art is None or not c.upload.storage_key:
                     continue
                 sigs[c.id] = parse_model(Signals, storage.read_bytes(art.storage_key))
-                files[c.id] = _local(storage, c.upload.storage_key, workdir, f"{c.id}{Path(c.upload.storage_key).suffix}")
+                files[c.id] = _local(
+                    storage, c.upload.storage_key, workdir, f"{c.id}{Path(c.upload.storage_key).suffix}"
+                )
             edl = build_auto_edl([ClipInput(cid, sigs[cid]) for cid in files], aspect=s.get("aspect", "9:16"),
                                  color_preset=s.get("color_preset", "natural"),
                                  target_duration_s=s.get("target_duration_s"), title=project.title)  # fmt: skip

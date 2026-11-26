@@ -237,7 +237,9 @@ class ProjectOut(BaseModel):
     title: str
     prompt: str
     options: dict[str, Any]
-    status: Literal["empty", "analyzing", "ready", "partial", "failed", "planning", "review", "rendering", "done"]
+    status: Literal[
+        "empty", "analyzing", "ready", "partial", "failed", "planning", "review", "rendering", "done"
+    ]
     stage: str | None
     progress: float
     meter: LengthMeter

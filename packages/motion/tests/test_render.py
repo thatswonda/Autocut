@@ -57,7 +57,9 @@ def test_page_escapes_text_and_sets_rtl() -> None:
 def test_renders_mp4(tmp_path: Path) -> None:
     logo = tmp_path / "logo.png"
     Image.new("RGBA", (300, 100), (232, 93, 4, 255)).save(logo)
-    res = render_composition(comp(), {"logo": logo}, tmp_path / "out.mp4", workdir=tmp_path / "w", short_edge=360)
+    res = render_composition(
+        comp(), {"logo": logo}, tmp_path / "out.mp4", workdir=tmp_path / "w", short_edge=360
+    )
     info = probe(res.path)
     assert (info.display_width, info.display_height) == (360, 640)
     assert info.duration_s == pytest.approx(4.0, abs=0.1)

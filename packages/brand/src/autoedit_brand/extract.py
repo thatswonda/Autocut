@@ -40,7 +40,11 @@ class SiteInfo:
     def as_source_text(self) -> str:
         """Compact, source-labelled text for the storyboard prompt (bounded size)."""
         parts = [f"[{self.source_id}] {self.url}"]
-        for label, value in (("Site name", self.name), ("Title", self.title), ("Description", self.description)):
+        for label, value in (
+            ("Site name", self.name),
+            ("Title", self.title),
+            ("Description", self.description),
+        ):
             if value:
                 parts.append(f"{label}: {value}")
         if self.headings:

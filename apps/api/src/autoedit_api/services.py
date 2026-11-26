@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from autoedit_pipeline.plans import PlanLimits, billing_enabled, effective_plan, fmt_duration, plan_limits
 from autoedit_schemas.media import MediaInfo
 
-from .db import AnalysisArtifact, Asset, MotionPlan, Project, ProjectClip, Render, Upload, User
+from .db import AnalysisArtifact, Asset, Project, ProjectClip, Render, Upload, User
 from .schemas import (
     ApiError,
     AssetOut,
@@ -258,7 +258,7 @@ def asset_out(a: Asset) -> AssetOut:
 def render_out(r: Render) -> RenderOut:
     ready = r.status == "ready" and r.storage_key
     return RenderOut(
-        id=r.id, kind=r.kind, status=r.status,  # type: ignore[arg-type]
+        id=r.id, kind=r.kind, status=r.status,
         stage=r.stage, progress=round(r.progress, 4), error_code=r.error_code, error=r.error,
         settings=r.settings or {}, report=r.report, duration_s=r.duration_s, width=r.width, height=r.height,
         video_url=f"/v1/renders/{r.id}/video" if ready else None,
@@ -274,7 +274,7 @@ def motion_out(db: Session, project: Project) -> MotionOut | None:
         return None
     assets = db.scalars(select(Asset).where(Asset.project_id == project.id).order_by(Asset.created_at)).all()
     return MotionOut(
-        status=mp.status,  # type: ignore[arg-type]
+        status=mp.status,
         stage=mp.stage, progress=round(mp.progress, 4), error_code=mp.error_code, error=mp.error,
         brand_kit=mp.brand_kit, composition=mp.composition, version=mp.version,
         pending_scene=(mp.pending or {}).get("scene_id"), cost_usd=mp.cost_usd or 0.0,

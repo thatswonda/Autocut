@@ -30,7 +30,9 @@ def fake_ai(monkeypatch: pytest.MonkeyPatch) -> None:
 def _image(client: TestClient, kind: str, color: tuple[int, int, int]) -> str:
     buf = io.BytesIO()
     Image.new("RGB", (600, 400), color).save(buf, "PNG")
-    r = client.post("/v1/assets", files={"file": (f"{kind}.png", buf.getvalue(), "image/png")}, data={"kind": kind})
+    r = client.post(
+        "/v1/assets", files={"file": (f"{kind}.png", buf.getvalue(), "image/png")}, data={"kind": kind}
+    )
     assert r.status_code == 201, r.text
     return r.json()["id"]
 

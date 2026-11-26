@@ -14,7 +14,6 @@ from autoedit_motion.storyboard import (
     generate_composition,
     regenerate_scene,
 )
-
 from autoedit_motion.testing import FakeClaude
 
 BRAND = {"name": "Kora", "colors": {"primary": "#E85D04"}, "fonts": {"heading": "", "body": ""}, "tone": ""}
@@ -30,7 +29,8 @@ def photo(tmp_path: Path) -> Path:
 def _req(photo: Path) -> StoryboardRequest:
     return StoryboardRequest(
         brief="Kora Coffee sells House Blend for ₦4,500. Free delivery in Lagos.",
-        duration_s=20, images=[ImageInput("ast_photo", "photo", photo, "file:p.png")],
+        duration_s=20,
+        images=[ImageInput("ast_photo", "photo", photo, "file:p.png")],
     )
 
 

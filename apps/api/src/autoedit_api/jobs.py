@@ -295,7 +295,10 @@ def unfinished_clip_ids() -> list[str]:
 
 def _crash_message(exit_code: int, what: str) -> tuple[str, str]:
     if exit_code in (-9, 137):
-        return "out_of_memory", f"The server ran out of memory during {what}. Try a smaller job or a larger server plan."
+        return (
+            "out_of_memory",
+            f"The server ran out of memory during {what}. Try a smaller job or a larger server plan.",
+        )
     if exit_code == -1:
         return "timeout", f"{what.capitalize()} took too long and was stopped."
     return "internal_error", f"{what.capitalize()} stopped unexpectedly (exit code {exit_code}). Try again."

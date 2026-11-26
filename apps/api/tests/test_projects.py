@@ -107,11 +107,6 @@ def test_delete_project_removes_everything(client: TestClient, short_clip: Path,
     assert not [p for p in storage_root.rglob("*") if p.is_file()]
 
 
-def test_motion_mode_not_yet_available(client: TestClient) -> None:
-    r = client.post("/v1/projects", json={"mode": "motion", "prompt": "Promo for my bakery"})
-    assert r.status_code == 409 and r.json()["error"]["code"] == "mode_not_available"
-
-
 def test_monthly_project_quota(client: TestClient) -> None:
     for _ in range(3):
         assert client.post("/v1/projects", json={"mode": "edit"}).status_code == 201
