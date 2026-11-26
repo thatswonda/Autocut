@@ -15,10 +15,13 @@ Full spec: [`docs/PRD.md`](docs/PRD.md) · Decisions: [`docs/DECISIONS.md`](docs
 | **M0** Skeleton: monorepo, schemas (EDL, Composition, signals), Docker, Compose, CI | ✅ done |
 | **M1** Ingest and signals: multi-clip projects, resumable uploads, probe, proxy, total-length limits, local signal pass, `signals.json`, CLI | ✅ done |
 | Web app (interim): start screen, multi-clip upload, live progress, analysis timeline | ✅ usable now |
-| **Edit video**: AI-style prompt box, color-grade templates, auto edit from signals (cuts dead air, black and empty shots, subject-centred reframe, exposure fix, loudness), intro/outro templates, MP4 download | ✅ usable now (rules-based; AI story editing arrives with M3-M4) |
-| **Motion graphics**: website link and/or images → brand kit → Claude storyboard (facts checked in code) → editable scenes → 1080p/720p MP4; six styles | ✅ usable now (needs `ANTHROPIC_API_KEY`) |
-| **Templates**: save any part of a finished video (edit or motion) as an intro/outro template | ✅ usable now |
-| M2 Transcription · M3 Vision + story · M4 AI EDL · … · M18 | next |
+| **M2** Transcription: Whisper on the server, word timestamps, fillers, stutters, pauses | ✅ done |
+| **M3/M4** AI editing: Claude sees frames + transcript + analysis + your instructions and plans the edit; cuts snap to word edges; rules fallback without a key | ✅ done |
+| **M5/M6** Captions (4 word-by-word styles), noise reduction, music bed with ducking, loudness, punch-in zooms, speed ramps, subject-tracking reframe, auto-correct + 8 grades + fine adjustments | ✅ done |
+| **M9 (interim)** Web app: prompt box with grade/style templates, edit decisions editor (reorder, cut, restore, grade sliders, caption fixes), re-render without re-analysis, SRT and edit-list downloads | ✅ usable now |
+| **M12–M16** Motion graphics: website and/or images and clips → brand kit → Claude storyboard (facts checked in code) → layout self-review → editable scenes → MP4; 10 templates incl. your own footage; six styles; free voiceover (4 voices) with optional captions; music | ✅ usable now (needs `ANTHROPIC_API_KEY`) |
+| **M17** Crossover: save any part of a finished video as an intro/outro template; footage scenes in motion videos | ✅ done |
+| M7 B-roll and sound effects (need a stock-media key) · M8 self-review of rendered edits · M10 payments (on hold) · M18 mobile | not started |
 
 **Test phase:** billing is switched off. Everyone gets the `test` plan: up to 30 minutes of footage per
 project, 20 clips, unlimited projects, no watermark, and no upgrade prompts. No payment provider is
@@ -71,9 +74,15 @@ redeploys. Tested under the Starter plan's limits (512 MB, 0.5 CPU): peak memory
 time (5.5 minutes of footage analyzed in about 3 minutes). Switch the plan to Standard for faster analysis
 and set `AUTOEDIT_SIGNAL_WORKERS=4`.
 
-Motion-graphics rendering measured at 464 MB (720p) and 576 MB (1080p) on top of the ~150 MB server, so
-on Starter it can be stopped for memory: the render then fails with a clear message and the app keeps
-running. **Use the Standard plan (2 GB) for motion graphics.** Editing videos fits Starter.
+Memory on Starter (512 MB), measured for the whole server including job processes:
+
+| Job | Peak | Fits Starter? |
+|---|---|---|
+| AI edit (analysis, transcription, plan, render, re-render) | 466 MB | yes, tight |
+| Motion graphics render, 720p | ~610 MB (Chrome 330–410 MB + server) | no: use Standard |
+
+A job stopped for memory fails with a clear message and the app keeps running. **Use the Standard plan
+(2 GB) for motion graphics**, and set `AUTOEDIT_WHISPER_MODEL=small` there for more accurate captions.
 
 ### Use the web app on your own computer
 

@@ -73,6 +73,22 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-410 | **Every FFmpeg call caps its threads** (`FF_DECODE`, `FF_X264` in `autoedit_pipeline.media`; decoder threads from `AUTOEDIT_FFMPEG_THREADS`, default 2; one encoder thread; one filter thread). | FFmpeg sizes thread pools from the host's CPU count, not the container's. On Render's many-core hosts one 4K segment needed ~1.7 GB, so an edit killed the 512 MB server (502). Capped: 222 MB at 720p, 304 MB at 1080p, 363 MB analysis, on a 4K clip. |
 | D-411 | **A resumed job gets two tries.** Each resume after a restart is counted on disk (`<data>/resumes/`); a third is refused and the job is marked failed (`server_restarted`) with a clear message. | A job that takes the server down would otherwise be resumed on every restart and keep the site offline. |
 
+## AI editing and sound
+
+| # | Decision | Why |
+|---|---|---|
+| D-501 | **Transcription on the server with faster-whisper** (`base` int8 by default, `AUTOEDIT_WHISPER_MODEL`), word timestamps, filler/stutter/pause flags, stored per clip as a `transcript` artifact. On a single server it runs in its own lean process before the render job. | No per-minute cost. `base` peaks ~350 MB alone (466 MB whole tree measured); `small` ~770 MB and clearly more accurate (it heard "naira" and "uh"), so it is the Standard-plan setting. |
+| D-502 | **One Claude call plans the edit** (frames ~1/s, at most 64 across clips at 512 px; transcript phrases; analysis summary; the user's instructions) and returns a small `EditPlan`, not a raw EDL. PRD stages C and D are combined; stage E is done in code. | Cheaper and faster than per-clip vision plus a story pass; timeline arithmetic is exact in code. Typical cost $0.15–0.40 per edit. |
+| D-503 | **Code makes every exact decision:** boundaries snap out of words with a natural lead-in and tail; `tighten` turns fillers, stutters and inner pauses into jump cuts; removed ranges are labelled from what they contain; captions come from the transcript (split numbers re-joined, Claude's `caption_fixes` applied). | The model can never cut mid-word or misplace a caption. |
+| D-504 | **Rules plan without a key** goes through the same plan → EDL → render path; the look comes from words in the prompt ("dark" → Moody Film). | Edits still work, and say plainly that they are automatic. |
+| D-505 | **Captions are ASS scripts burned by libass** with bundled TTF fonts (converted from the motion fonts, OFL); four styles; RTL lines use Noto Sans Arabic. | Exact timing and styling, no browser needed. |
+| D-506 | **Finishing runs in two passes** (audio: denoise, music with sidechain ducking, loudnorm; then video with captions, audio copied). | loudnorm's 3 s lookahead made FFmpeg buffer raw video in one pass (380 MB → 160 MB). |
+| D-507 | **Users change the plan, not the video:** reorder, cut, restore, grade sliders, caption word fixes; re-render sends the edited plan and skips analysis and Claude. | PRD 5.6: every decision visible and editable; re-renders cost nothing in AI. |
+| D-508 | **Voiceover with Piper** on the server (4 English voices, two baked into the image); lines placed at their scene, sped up to at most 1.25× to fit; music ducked under it; captions spread over each line by length and placed at the top to clear on-screen text. | No TTS key or per-minute cost; ~215 MB. A paid provider can replace `autoedit_motion.voice.speak` later. |
+| D-509 | **Footage scenes** use frames pre-extracted by FFmpeg (timed and cropped to the scene); the page swaps the frame on every seek and waits for it to decode. | Chrome's headless shell cannot decode H.264; this stays deterministic and frame-exact. |
+| D-510 | **Motion self-review:** after the storyboard, the page is laid out in the browser; scenes whose text cannot fit at a readable size get one rewrite with shorter copy. | PRD 5.10 step 8 for the most common defect, without rendering video. |
+| D-511 | **Music is the user's own upload** (MP3/M4A/AAC/WAV/OGG ≤ 25 MB) in both modes; no stock library yet. | Licensing stays with the user; a library needs a provider and license tracking (M7). |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |
@@ -80,6 +96,9 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | Paste links as clip sources | §4.1 | With the M9 upload UI (needs the same safe fetcher as M12's crawler). |
 | Upload content moderation (NSFW/abuse screen) | §11 | M11 hardening, as a Stage A pre-check. |
 | Real sign-in (email/phone, Google) | §5.8 | M10. |
+| B-roll and sound effects from stock libraries | §5.4 | M7: needs a Pexels/Pixabay key and license tracking. |
+| Self-review of rendered edits (output frames back to Claude) | §5.5 | M8; motion already has a layout review (D-510). |
+| Crossfade/whip transitions between edit segments | §5.4 | Jump cuts for now; the schema already supports them. |
 
 ## M10 payments: on hold
 
