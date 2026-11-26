@@ -19,3 +19,4 @@ api-demo-out/
 *.db
 .env
 dist/
+dump.rdb
