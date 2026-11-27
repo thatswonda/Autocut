@@ -84,7 +84,10 @@ def render_composition(
     """Render ``comp`` to an H.264 MP4 at ``out``. ``assets`` maps asset ids to local files."""
     t0 = time.perf_counter()
     fps = fps or comp.meta.fps
-    width, height = output_size(comp.meta.aspect, short_edge)
+    out_w, out_h = output_size(comp.meta.aspect, short_edge)
+    # Small servers animate at a capped size and upscale the frames (AUTOEDIT_MOTION_MAX_EDGE, e.g. 720).
+    cap = int(os.environ.get("AUTOEDIT_MOTION_MAX_EDGE", "0") or 0)
+    width, height = output_size(comp.meta.aspect, min(short_edge, cap) if cap >= 360 else short_edge)
     workdir.mkdir(parents=True, exist_ok=True)
     asset_dir = workdir / "assets"
     asset_dir.mkdir(exist_ok=True)
@@ -104,17 +107,10 @@ def render_composition(
     frames = max(1, round(comp.meta.duration_s * fps))
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp_out = out.with_suffix(".partial.mp4")
-    cmd = [
-        FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1",
-        "-f", "image2pipe", "-framerate", str(fps), "-c:v", "mjpeg", "-i", "-",
-        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
-        "-map", "0:v", "-map", "1:a", "-shortest",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p",
-        "-threads", "1", "-x264-params", "rc-lookahead=4:ref=2",
-        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp_out),
-    ]  # fmt: skip
-    enc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    assert enc.stdin is not None
+    # 1. Capture every frame to disk with only Chrome running; 2. close Chrome; 3. encode. Running the
+    # encoder alongside Chrome doubled the peak memory (it killed 512 MB servers).
+    frame_dir = workdir / "frames"
+    frame_dir.mkdir(exist_ok=True)
     warnings: list[str] = []
     try:
         with Browser(width, height) as page:
@@ -122,21 +118,32 @@ def render_composition(
             warnings = page.evaluate("window.__ready()") or []
             for i in range(frames):
                 page.evaluate(f"window.__seek({i / fps:.5f})")
-                enc.stdin.write(page.screenshot("jpeg", 92))
+                (frame_dir / f"{i:05d}.jpg").write_bytes(page.screenshot("jpeg", 92))
                 if progress and (i % 15 == 0 or i == frames - 1):
-                    progress((i + 1) / frames)
-        enc.stdin.close()
-        code = enc.wait(timeout=600)
-        if code != 0:
-            err = enc.stderr.read().decode("utf-8", "replace")[-400:] if enc.stderr else ""
-            raise RenderError(f"encoding failed: {err}")
+                    progress((i + 1) / frames * 0.85)
+        scale = [] if (out_w, out_h) == (width, height) else [
+            "-vf", f"scale={out_w}:{out_h}:flags=lanczos,unsharp=3:3:0.35"]  # fmt: skip
+        proc = subprocess.run(
+            [FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1",
+             "-framerate", str(fps), "-i", str(frame_dir / "%05d.jpg"),
+             "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-map", "0:v", "-map", "1:a", "-shortest", *scale,
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", "1",
+             "-x264-params", "rc-lookahead=4:ref=2", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+             str(tmp_out)],
+            capture_output=True, timeout=1800, check=False,
+        )  # fmt: skip
+        if proc.returncode != 0:
+            raise RenderError(f"encoding failed: {proc.stderr.decode('utf-8', 'replace')[-400:]}")
+        if progress:
+            progress(1.0)
     except Exception:
-        enc.kill()
         tmp_out.unlink(missing_ok=True)
         raise
+    finally:
+        shutil.rmtree(frame_dir, ignore_errors=True)
     tmp_out.replace(out)
     return RenderResult(
-        path=out, width=width, height=height, fps=fps, frames=frames, duration_s=comp.meta.duration_s,
+        path=out, width=out_w, height=out_h, fps=fps, frames=frames, duration_s=comp.meta.duration_s,
         seconds=time.perf_counter() - t0, warnings=warnings,
     )  # fmt: skip
 

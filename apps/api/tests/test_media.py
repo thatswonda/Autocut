@@ -328,3 +328,16 @@ def test_links_in_change_requests() -> None:
     assert _links_in("make it 30 seconds") == []
     assert _MORE_PHOTOS_RE.search("can you get more pictures of the shoes")
     assert not _MORE_PHOTOS_RE.search("remove the photos of cars")
+
+
+def test_motion_render_refused_on_small_servers(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import autoedit_api.routes.media as media
+
+    p = _motion_project(client)
+    monkeypatch.setattr(media, "memory_limit_mb", lambda: 512)
+    r = client.post(f"/v1/projects/{p['id']}/renders", json={})
+    assert r.status_code == 507 and r.json()["error"]["code"] == "server_too_small"
+    assert "Standard" in r.json()["error"]["message"]
+    assert client.get("/v1/catalog").json()["motion_render_ok"] is False
+    monkeypatch.setattr(media, "memory_limit_mb", lambda: 2048)
+    assert client.get("/v1/catalog").json()["motion_render_ok"] is True

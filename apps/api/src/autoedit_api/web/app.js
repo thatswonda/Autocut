@@ -1228,6 +1228,10 @@
   function motionRenderPanel(p) {
     const comp = state.sb?.comp;
     if (!comp) return "";
+    if (state.catalog.motion_render_ok === false) {
+      return `<div class="errbox"><span><b>This server is too small to animate videos.</b> Motion graphics need at least 1 GB of memory and this server has ${state.catalog.server_memory_mb} MB.
+        On Render: Settings → Instance Type → Standard (2 GB), then come back. Your storyboard is saved.</span></div>`;
+    }
     const shown = p.renders.some((r) => r.status === "ready");
     if (shown && !state.ui.showOptions) return "";
     const res = opt("resolution", 1080);

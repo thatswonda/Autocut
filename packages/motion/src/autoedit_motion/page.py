@@ -623,7 +623,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}
 .wipe{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
 .wipe i{position:absolute;inset:-2% -2%;transform:translateX(-102%)}
 .wipe .p1{background:var(--wipe1,#FF5A1F)}.wipe .p2{background:var(--wipe2,#111)}
-#grain{position:absolute;inset:-50%;z-index:1000;pointer-events:none;opacity:.07;mix-blend-mode:overlay;
+#grain{position:absolute;inset:0;z-index:1000;pointer-events:none;opacity:.05;background-size:220px 220px;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
 #vignette{position:absolute;inset:0;z-index:1001;pointer-events:none;background:radial-gradient(120% 95% at 50% 45%,transparent 55%,rgba(0,0,0,.28) 100%)}
 

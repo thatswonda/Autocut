@@ -24,7 +24,7 @@ LEAN_FLAGS = [
     "--disable-component-update", "--disable-sync", "--no-first-run", "--mute-audio",
     "--disable-features=site-per-process,Translate,MediaRouter,OptimizationHints,PaintHolding",
     "--js-flags=--max-old-space-size=128", "--num-raster-threads=1", "--hide-scrollbars", "--force-color-profile=srgb",
-    "--remote-debugging-pipe",
+    "--enable-low-end-device-mode", "--disable-partial-raster", "--remote-debugging-pipe",
 ]  # fmt: skip
 
 

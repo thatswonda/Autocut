@@ -113,7 +113,7 @@
       { opacity: 0, transform: `translateY(${30 * u}px) rotate(-8deg) scale(.9)` },
       { opacity: 1, transform: "translateY(0) rotate(0) scale(1)" },
     ],
-    grain: () => [{ transform: "translate(0,0)" }, { transform: `translate(${-37 * u}px, ${23 * u}px)` }],
+    grain: () => [{ backgroundPosition: "0px 0px" }, { backgroundPosition: "-7370px 4630px" }],
   };
 
   function tooBig(el) {
