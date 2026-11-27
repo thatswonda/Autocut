@@ -50,6 +50,7 @@ class PageSpec:
     counters: list[dict[str, Any]] = field(default_factory=list)
     footage: list[dict[str, Any]] = field(default_factory=list)
     overlays: list[dict[str, Any]] = field(default_factory=list)
+    lite: bool = False
 
 
 class _Rand:
@@ -110,12 +111,13 @@ def _counter(value: str) -> tuple[str, float, int, str] | None:
 
 class _Builder:
     def __init__(self, comp: Composition, assets: dict[str, str],
-                 footage: dict[str, FootageFrames] | None = None):  # fmt: skip
+                 footage: dict[str, FootageFrames] | None = None, lite: bool = False):  # fmt: skip
+        self.lite = lite
         self.comp = comp
         self.assets = assets
         self.footage = footage or {}
         self.style = get_style(comp.meta.style)
-        self.spec = PageSpec(duration=comp.meta.duration_s)
+        self.spec = PageSpec(duration=comp.meta.duration_s, lite=lite)
         self.colors = comp.brand.colors.model_dump()
         self.centered = self.style.key in ("clean_minimal", "luxury", "warm_friendly")
 
@@ -222,6 +224,8 @@ class _Builder:
             return '<div class="fx"><i class="streak"></i></div>'
         calm = self.style.key in ("clean_minimal", "luxury", "editorial")
         n = 7 if calm else 14
+        if self.lite:  # small servers: keep the sweep and accents, drop the blurred glow and most particles
+            n = 4
         rnd = _Rand(index * 7919 + 17)
         dots = []
         for _ in range(n):
@@ -237,7 +241,8 @@ class _Builder:
         )
         side = "l" if index % 2 else "r"
         corners = "" if calm else '<i class="corner tl"></i><i class="corner br"></i>'
-        return f'<div class="fx"><i class="glow g{side}"></i><i class="streak"></i>{"".join(dots)}{corners}</div>'
+        glow = "" if self.lite else f'<i class="glow g{side}"></i>'
+        return f'<div class="fx">{glow}<i class="streak"></i>{"".join(dots)}{corners}</div>'
 
     def background(self, sid: str, t0: float, dur: float) -> str:
         kind = self.style.background
@@ -477,17 +482,22 @@ class _Builder:
             f'style="--wipe1:{self.colors.get("accent", "#FF5A1F")};--wipe2:{self.colors.get("primary", "#111111")}">'
             + "".join(layers)
             + "".join(overlays)
-            + '<div id="grain"></div><div id="vignette"></div>'
+            + ("" if self.lite else '<div id="grain"></div>')
+            + '<div id="vignette"></div>'
             + f"</div><script>window.__SPEC={spec};\n{RUNTIME_JS}</script></body></html>"
         )
 
 
 def build_page(
-    comp: Composition, assets: dict[str, str], footage: dict[str, FootageFrames] | None = None
+    comp: Composition,
+    assets: dict[str, str],
+    footage: dict[str, FootageFrames] | None = None,
+    *,
+    lite: bool = False,
 ) -> str:
     """``assets`` maps asset ids to URLs relative to the page (or absolute file URLs); ``footage`` maps
     footage scene ids to their extracted frames (rendering only)."""
-    return _Builder(comp, assets, footage).build()
+    return _Builder(comp, assets, footage, lite=lite).build()
 
 
 CSS = r"""

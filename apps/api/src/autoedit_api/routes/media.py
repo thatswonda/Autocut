@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -12,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 
+from autoedit_motion.render import low_memory_server, memory_limit_mb
 from autoedit_motion.storyboard import ai_available
 from autoedit_motion.styles import STYLES
 from autoedit_motion.voice import GEMINI_VOICES, VOICES, gemini_available
@@ -95,8 +95,7 @@ def catalog() -> dict[str, object]:
         "aspects": ["9:16", "1:1", "4:5", "16:9"],
         "gemini_voice": gemini_available(),
         "server_memory_mb": memory_limit_mb(),
-        "motion_render_ok": (memory_limit_mb() or 10**6) >= MOTION_MIN_MEMORY_MB
-        or os.environ.get("AUTOEDIT_ALLOW_LOW_MEMORY_MOTION") == "1",
+        "motion_light_mode": low_memory_server(),
         "voices": [
             {"key": "auto", "name": "Best available" + (" (Gemini)" if gemini_available() else "")},
             *(
@@ -455,26 +454,6 @@ def retry_plan(
 # --------------------------------------------------------------------------------------- renders
 
 
-MOTION_MIN_MEMORY_MB = 1024
-
-
-def memory_limit_mb() -> int | None:
-    """The container's memory limit (cgroup v2 or v1), or None when unlimited or unknown."""
-    for path, unlimited in (
-        ("/sys/fs/cgroup/memory.max", "max"),
-        ("/sys/fs/cgroup/memory/memory.limit_in_bytes", ""),
-    ):
-        try:
-            raw = Path(path).read_text().strip()
-        except OSError:
-            continue
-        if raw == unlimited or not raw.isdigit():
-            return None
-        value = int(raw) // (1024 * 1024)
-        return value if value < 1_000_000 else None
-    return None
-
-
 @router.post(
     "/v1/projects/{project_id}/renders", status_code=status.HTTP_201_CREATED, response_model=RenderOut
 )
@@ -507,19 +486,6 @@ def create_render(project_id: str, body: RenderCreate, db: DbSession, user: Curr
         mp = project.motion
         if mp is None or mp.status != "ready" or not mp.composition:
             raise ApiError(409, "not_ready", "The storyboard is not ready yet")
-        limit = memory_limit_mb()
-        if (
-            limit is not None
-            and limit < MOTION_MIN_MEMORY_MB
-            and os.environ.get("AUTOEDIT_ALLOW_LOW_MEMORY_MOTION") != "1"
-        ):
-            raise ApiError(
-                507, "server_too_small",
-                f"Motion graphics need at least {MOTION_MIN_MEMORY_MB // 1024} GB of server memory to animate in a "
-                f"browser, and this server has {limit} MB. On Render: Settings, Instance Type, choose Standard "
-                "(2 GB), then render again. Your storyboard is saved.",
-                memory_mb=limit,
-            )  # fmt: skip
         if mp.pending:
             raise ApiError(409, "busy", "Wait for the scene rewrite to finish")
     for tid in (body.intro_template_id, body.outro_template_id):

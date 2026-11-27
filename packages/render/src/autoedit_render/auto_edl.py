@@ -99,7 +99,15 @@ def build_auto_edl(clips: list[ClipInput], *, aspect: str = "9:16", color_preset
         total = sum(b - a for _, a, b, _, _ in pieces)
         # Drop the weakest pieces (never the opening one) until the cut fits the target.
         while total > target_duration_s * 1.05 and len(pieces) > 1:
-            idx = min(range(1, len(pieces)), key=lambda i: pieces[i][4])
+            # Only drop a piece if what remains stays near the target; otherwise trim the end below.
+            ok = [
+                i
+                for i in range(1, len(pieces))
+                if total - (pieces[i][2] - pieces[i][1]) >= target_duration_s * 0.85
+            ]
+            if not ok:
+                break
+            idx = min(ok, key=lambda i: pieces[i][4])
             cid, a, b, _, _ = pieces.pop(idx)
             removed.append(
                 RemovedRange(clip_id=cid, src_in=a, src_out=b, reason="Trimmed to reach the target length")

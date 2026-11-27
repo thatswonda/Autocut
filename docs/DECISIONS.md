@@ -111,6 +111,14 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-702 | **Direct actions without AI cost:** remove any photo, logo or clip with an × (scenes that used it fall back to another image or to text); "Get more photos from my links" re-reads the sites (4 inner pages, up to 24 images) and skips duplicates. | Simple changes should be instant and free. |
 | D-703 | The conversation (request and reply) is kept with the project (last 30) and shown as a chat. Failures are shown in the same place with the reason. | The user sees what was asked and what changed. |
 
+## Motion graphics on a 512 MB server
+
+| # | Decision | Why |
+|---|---|---|
+| D-801 | **Light mode** (`AUTOEDIT_MOTION_LITE=1`, or automatic below 1 GB of container memory): animate at 720p at most, without the blurred glow, grain, blur filters and most particles, then upscale the frames to the chosen size. Frames are captured to disk with only Chrome running and encoded after Chrome exits. | Owner stays on Render Starter for the test phase. Measured in a 512 MB / no-swap container: the full motion flow (footage, voiceover, music, effects) and the full AI edit flow complete with no memory failures. Before, Chrome at 1080p plus the encoder running alongside it crashed the service (502). |
+| D-802 | Failed renders show **Finish my video**, which renders again from the saved storyboard or edit. | A crash must not lose work. |
+| D-803 | The automatic cut only drops a part if what remains stays within 85% of the target; otherwise it trims the end. | It gave 5.9 s for a 15 s target. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |

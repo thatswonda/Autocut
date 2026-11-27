@@ -55,6 +55,32 @@ def extract_footage(comp: Composition, videos: dict[str, Path], workdir: Path, *
     return out
 
 
+def memory_limit_mb() -> int | None:
+    """The container's memory limit (cgroup v2 or v1), or None when unlimited or unknown."""
+    for path, unlimited in (
+        ("/sys/fs/cgroup/memory.max", "max"),
+        ("/sys/fs/cgroup/memory/memory.limit_in_bytes", ""),
+    ):
+        try:
+            raw = Path(path).read_text().strip()
+        except OSError:
+            continue
+        if raw == unlimited or not raw.isdigit():
+            return None
+        value = int(raw) // (1024 * 1024)
+        return value if value < 1_000_000 else None
+    return None
+
+
+def low_memory_server() -> bool:
+    """True on servers with under 1 GB (e.g. Render Starter), or when AUTOEDIT_MOTION_LITE=1."""
+    forced = os.environ.get("AUTOEDIT_MOTION_LITE")
+    if forced in ("0", "1"):
+        return forced == "1"
+    limit = memory_limit_mb()
+    return limit is not None and limit < 1024
+
+
 class RenderError(RuntimeError):
     pass
 
@@ -80,13 +106,19 @@ def render_composition(
     short_edge: int = 720,
     fps: int | None = None,
     progress: Callable[[float], None] | None = None,
+    lite: bool | None = None,
 ) -> RenderResult:
-    """Render ``comp`` to an H.264 MP4 at ``out``. ``assets`` maps asset ids to local files."""
+    """Render ``comp`` to an H.264 MP4 at ``out``. ``assets`` maps asset ids to local files.
+
+    ``lite`` (default: on when the server has under 1 GB of memory) animates at 720p at most with the
+    blur, glow and grain layers left out, then upscales the frames, so it fits a 512 MB server."""
     t0 = time.perf_counter()
     fps = fps or comp.meta.fps
     out_w, out_h = output_size(comp.meta.aspect, short_edge)
     # Small servers animate at a capped size and upscale the frames (AUTOEDIT_MOTION_MAX_EDGE, e.g. 720).
-    cap = int(os.environ.get("AUTOEDIT_MOTION_MAX_EDGE", "0") or 0)
+    if lite is None:
+        lite = low_memory_server()
+    cap = int(os.environ.get("AUTOEDIT_MOTION_MAX_EDGE", "0") or 0) or (720 if lite else 0)
     width, height = output_size(comp.meta.aspect, min(short_edge, cap) if cap >= 360 else short_edge)
     workdir.mkdir(parents=True, exist_ok=True)
     asset_dir = workdir / "assets"
@@ -102,7 +134,7 @@ def render_composition(
         urls[aid] = f"assets/{dst.name}"
     footage = extract_footage(comp, videos, workdir, width=width, height=height, fps=fps)
     page_path = workdir / "index.html"
-    page_path.write_text(build_page(comp, urls, footage), encoding="utf-8")
+    page_path.write_text(build_page(comp, urls, footage, lite=lite), encoding="utf-8")
 
     frames = max(1, round(comp.meta.duration_s * fps))
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -770,7 +770,8 @@
         <span class="note">When every clip is done you can create your edit. You can leave this page; it keeps working.</span></div></section>`;
     else if (anyReady && (!shown || state.ui.showOptions)) step = editOptionsPanel(p);
     const failedRender = latest && latest.status === "failed" ? `<div class="errbox"><span>${esc(latest.error || "Rendering failed.")}</span>
-        <button type="button" class="btn small" data-action="show-options">Try again</button></div>` : "";
+        <button type="button" class="btn small primary" data-action="render">${icon.wand} Finish my video</button>
+        <button type="button" class="btn small ghost" data-action="show-options">Change settings</button></div>` : "";
     return `
       ${meterHtml(p.meter.total_raw_s, p.meter.limit_s, p.meter.clip_count)}
       ${failedRender}
@@ -1053,7 +1054,8 @@
         <button type="button" class="btn small" data-action="retry-plan">${icon.retry} Try again</button></div>
         ${m.brand_kit ? brandKitPanel(p) : ""}`;
     }
-    const failedRender = latest && latest.status === "failed" ? `<div class="errbox"><span>${esc(latest.error || "Rendering failed.")}</span></div>` : "";
+    const failedRender = latest && latest.status === "failed" ? `<div class="errbox"><span><b>The video did not finish.</b> ${esc(latest.error || "")}${state.catalog.motion_light_mode ? " It now renders in light mode, made for this server." : ""}</span>
+      <button type="button" class="btn small primary" data-action="render">${icon.wand} Finish my video</button></div>` : "";
     return `
       ${rendering ? progressPanel("Animating your video", latest, ["Setting up scenes", "Animating frames", "Encoding", "Finishing"]) : ""}
       ${failedRender}
@@ -1228,10 +1230,7 @@
   function motionRenderPanel(p) {
     const comp = state.sb?.comp;
     if (!comp) return "";
-    if (state.catalog.motion_render_ok === false) {
-      return `<div class="errbox"><span><b>This server is too small to animate videos.</b> Motion graphics need at least 1 GB of memory and this server has ${state.catalog.server_memory_mb} MB.
-        On Render: Settings → Instance Type → Standard (2 GB), then come back. Your storyboard is saved.</span></div>`;
-    }
+
     const shown = p.renders.some((r) => r.status === "ready");
     if (shown && !state.ui.showOptions) return "";
     const res = opt("resolution", 1080);

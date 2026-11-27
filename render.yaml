@@ -35,6 +35,8 @@ services:
         value: "30"
       - key: AUTOEDIT_RENDER_THREADS
         value: "1"             # fits 512 MB; set 2 on the standard plan for ~2x faster renders
+      - key: AUTOEDIT_MOTION_LITE
+        value: "1"             # motion graphics in light mode (720p animation, lighter effects): fits 512 MB
       - key: AUTOEDIT_WHISPER_MODEL
         value: base            # speech model for captions and cuts; "small" is more accurate (needs Standard)
       - key: GEMINI_API_KEY

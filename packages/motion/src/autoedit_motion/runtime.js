@@ -173,7 +173,10 @@
       els.forEach((el, i) => {
         const make = PRESETS[a.preset];
         if (!make) return;
-        const anim = el.animate(make(el), {
+        let frames = make(el);
+        // Light mode (small servers): no blur filters, which need extra full-size buffers.
+        if (S.lite) frames = frames.map((f) => { const g = { ...f }; delete g.filter; return g; });
+        const anim = el.animate(frames, {
           duration: a.dur * 1000,
           delay: (a.start + i * (a.stagger || 0)) * 1000,
           easing: a.easing || "linear",
