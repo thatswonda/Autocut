@@ -102,6 +102,9 @@ class FakeClaude:
                             "src_out": b,
                             "reason": f"Phrase {i + 1}",
                             "punch_in": i == 1,
+                            "move": ("zoom_in", "pan_right", "zoom_out")[i % 3],
+                            "transition_in": ("cut", "zoom", "whip", "glitch", "flash")[i % 5],
+                            "hits": [{"t": round((a + b) / 2, 2), "kind": "impact"}] if i == 2 else [],
                         }
                     )
                 if phrases[0][0] > 0.5:
@@ -123,6 +126,8 @@ class FakeClaude:
             "segments": segments,
             "removed": removed,
             "tighten": True,
+            "energy": "high",
+            "sfx": True,
             "color": {"preset": "moody_film", "exposure": 8, "contrast": 10, "reason": "Dark look requested"},
             "captions": {"enabled": True, "style": "word_pop", "highlight": ["price", "naira"]},
         }

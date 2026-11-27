@@ -349,7 +349,7 @@ def render_job(render_id: str) -> str:
         r.status, r.stage, r.progress, r.error_code, r.error = "processing", "Preparing", 0.02, None, None
         db.commit()
         s = r.settings or {}
-        short_edge = 1080 if int(s.get("resolution", 720)) >= 1080 else 720
+        short_edge = 1080 if int(s.get("resolution", 1080)) >= 1080 else 720
 
         def template_file(tid: str | None) -> Path | None:
             if not tid:

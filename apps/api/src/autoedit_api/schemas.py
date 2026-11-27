@@ -185,7 +185,7 @@ class RenderOut(BaseModel):
 
 
 class RenderCreate(_In):
-    resolution: Literal[720, 1080] = 720
+    resolution: Literal[720, 1080] = 1080
     aspect: AspectStr | None = None
     color_preset: str | None = Field(default=None, max_length=32)
     target_duration_s: float | None = Field(default=None, gt=0, le=3600)

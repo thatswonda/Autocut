@@ -817,7 +817,7 @@
     const aspect = opt("aspect", o.aspect || "9:16");
     const grade = opt("color_preset", o.color_preset || "auto");
     const target = opt("target_duration_s", o.target_duration_s ?? "");
-    const res = opt("resolution", 720);
+    const res = opt("resolution", 1080);
     const prompt = opt("prompt", p.prompt || "");
     const caps = opt("captions", o.captions ?? "auto");
     const capStyle = opt("caption_style", o.caption_style || "word_pop");
@@ -834,7 +834,7 @@
           <div class="row">
             <label class="field2" for="r-aspect">Format<select id="r-aspect">${Object.entries(ASPECT_LABEL).map(([k, l]) => `<option value="${k}" ${aspect === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
             <label class="field2" for="r-target">Length<select id="r-target"><option value="">Keep everything good</option>${[15, 30, 45, 60, 90, 120, 180].map((s) => `<option value="${s}" ${String(target) === String(s) ? "selected" : ""}>About ${fmtDur(s)}</option>`).join("")}</select></label>
-            <label class="field2" for="r-res">Quality<select id="r-res"><option value="720" ${res === 720 ? "selected" : ""}>720p (faster)</option><option value="1080" ${res === 1080 ? "selected" : ""}>1080p</option></select></label>
+            <label class="field2" for="r-res">Quality<select id="r-res"><option value="1080" ${res === 1080 ? "selected" : ""}>1080p (best)</option><option value="720" ${res === 720 ? "selected" : ""}>720p (faster)</option></select></label>
           </div>
           <div class="trow"><div class="trow-head"><h3>Color grade</h3><span>${grade === "auto" ? "Auto: picked from your instructions and footage" : "Preview on your footage (approximate)"}</span></div>
             <div class="tiles">${colorTiles(grade, state.posters.get(p.id), "data-rgrade")}</div></div>
@@ -1140,7 +1140,7 @@
     if (!comp) return "";
     const shown = p.renders.some((r) => r.status === "ready");
     if (shown && !state.ui.showOptions) return "";
-    const res = opt("resolution", 720);
+    const res = opt("resolution", 1080);
     return `
       <section class="panel cta-panel" aria-label="Create video">
         <div class="panel-head"><h2>${shown ? "Render again" : "Happy with the storyboard?"}</h2><span class="sub">Pick the look and format, then create the video.</span></div>
@@ -1148,7 +1148,7 @@
           <div class="trow"><div class="trow-head"><h3>Motion style</h3></div><div class="tiles">${styleTiles(comp.meta.style, "data-sbstyle")}</div></div>
           <div class="row">
             <label class="field2" for="sb-aspect">Format<select id="sb-aspect">${Object.entries(ASPECT_LABEL).map(([k, l]) => `<option value="${k}" ${comp.meta.aspect === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-            <label class="field2" for="r-res">Quality<select id="r-res"><option value="720" ${res === 720 ? "selected" : ""}>720p (faster)</option><option value="1080" ${res === 1080 ? "selected" : ""}>1080p</option></select></label>
+            <label class="field2" for="r-res">Quality<select id="r-res"><option value="1080" ${res === 1080 ? "selected" : ""}>1080p (best)</option><option value="720" ${res === 720 ? "selected" : ""}>720p (faster)</option></select></label>
           </div>
           ${templatePicker("r")}
           <div class="row"><button type="button" class="btn primary big-btn" data-action="render" ${p.motion.pending_scene ? "disabled" : ""}>${icon.wand} Create video</button>
@@ -1204,7 +1204,7 @@
     if (p.mode === "motion" && !(await saveStoryboard())) return;
     const o = p.options || {};
     const body = {
-      resolution: Number(opt("resolution", 720)),
+      resolution: Number(opt("resolution", 1080)),
       intro_template_id: opt("intro_template_id", o.intro_template_id || null) || "",
       outro_template_id: opt("outro_template_id", o.outro_template_id || null) || "",
     };

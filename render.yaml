@@ -33,6 +33,8 @@ services:
         value: "false"         # test phase: no payments, no limits beyond 30 min per project
       - key: AUTOEDIT_RETENTION_DAYS
         value: "30"
+      - key: AUTOEDIT_RENDER_THREADS
+        value: "1"             # fits 512 MB; set 2 on the standard plan for ~2x faster renders
       - key: AUTOEDIT_WHISPER_MODEL
         value: base            # speech model for captions and cuts; "small" is more accurate (needs Standard)
       - key: ANTHROPIC_API_KEY

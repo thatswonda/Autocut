@@ -121,7 +121,7 @@ def test_motion_render_template_and_reuse(client: TestClient) -> None:
 
     p2 = _motion_project(client, options={"aspect": "1:1", "duration_s": 6, "style": "luxury",
                                           "outro_template_id": tpl["id"]})  # fmt: skip
-    r2 = client.post(f"/v1/projects/{p2['id']}/renders", json={})
+    r2 = client.post(f"/v1/projects/{p2['id']}/renders", json={"resolution": 720})
     assert r2.status_code == 201
     rnd2 = client.get(f"/v1/projects/{p2['id']}").json()["renders"][0]
     assert rnd2["status"] == "ready", rnd2

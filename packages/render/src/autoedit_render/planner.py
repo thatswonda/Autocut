@@ -37,6 +37,8 @@ from autoedit_schemas.edl import (
     Music,
     RemovedRange,
     Segment,
+    Sfx,
+    SfxType,
 )
 from autoedit_schemas.signals import Signals
 from autoedit_schemas.transcript import Transcript, Word
@@ -46,8 +48,15 @@ from .presets import COLOR_PRESETS
 
 log = logging.getLogger(__name__)
 
+_MOVES = {"zoom_in", "zoom_out", "pan_left", "pan_right", "shake"}
+_TRANSITIONS = {"cut", "zoom", "whip", "flash", "glitch", "fade"}
+_TRANSITION_SFX = {"zoom": ("whoosh", -13.0), "whip": ("swoosh", -12.0), "flash": ("impact", -12.0),
+                   "glitch": ("glitch", -15.0)}  # fmt: skip
+_HIT_SFX = {"impact": ("impact", -10.0), "flash": ("impact", -11.0), "glitch": ("glitch", -14.0),
+            "shake": ("boom", -10.0)}  # fmt: skip
+
 PROMPTS = Path(__file__).parent / "prompts"
-PROMPT_VERSION = "edit.v1"
+PROMPT_VERSION = "edit.v2"
 FRAME_BUDGET = 64  # frames sent to Claude across all clips (~350 tokens each at 512 px)
 MIN_PIECE_S = 0.35
 LEAD_PAD_S = 0.10
@@ -97,6 +106,11 @@ class _Loose(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
 
+class PlanHit(_Loose):
+    t: float = Field(ge=0, description="Seconds inside the clip")
+    kind: str = Field(default="impact", description="impact | glitch | flash | shake")
+
+
 class PlanSegment(_Loose):
     clip_id: str
     src_in: float = Field(ge=0)
@@ -104,6 +118,9 @@ class PlanSegment(_Loose):
     reason: str = Field(default="", max_length=500)
     punch_in: bool = False
     speed: float = Field(default=1.0, ge=0.5, le=3.0)
+    move: str = Field(default="none", description="none | zoom_in | zoom_out | pan_left | pan_right | shake")
+    transition_in: str = Field(default="cut", description="cut | zoom | whip | flash | glitch | fade")
+    hits: list[PlanHit] = Field(default_factory=list, max_length=4)
 
 
 class PlanRemoved(_Loose):
@@ -137,6 +154,8 @@ class EditPlan(_Loose):
     color: PlanColor = Field(default_factory=PlanColor)
     captions: PlanCaptions = Field(default_factory=PlanCaptions)
     source: str = Field(default="ai", description="ai | rules | user")
+    energy: str = Field(default="medium", description="calm | medium | high: pacing of effects and sounds")
+    sfx: bool = True
     edits: dict[str, str] = Field(default_factory=dict, description="Caption corrections: original -> new")
     caption_fixes: dict[str, str] = Field(default_factory=dict, description="Misheard words Claude corrected")
 
@@ -369,6 +388,53 @@ _LOOK_WORDS = [
 ]
 
 
+_ENERGY_WORDS = {
+    "high": (
+        "punchy",
+        "energetic",
+        "hype",
+        "fast",
+        "viral",
+        "tiktok",
+        "reel",
+        "dynamic",
+        "exciting",
+        "trendy",
+        "edgy",
+    ),
+    "calm": ("calm", "slow", "cinematic", "documentary", "elegant", "gentle", "soft", "relaxing", "luxury"),
+}
+
+
+def energy_from_prompt(prompt: str) -> str:
+    p = prompt.lower()
+    for level, words in _ENERGY_WORDS.items():
+        if any(w in p for w in words):
+            return level
+    return "medium"
+
+
+def auto_style(plan: EditPlan) -> EditPlan:
+    """Moves, transitions and punch-ins for a plan that has none, paced by ``plan.energy``."""
+    segs = []
+    n = len(plan.segments)
+    for i, sg in enumerate(plan.segments):
+        upd: dict[str, object] = {}
+        if plan.energy == "high":
+            upd["move"] = ("zoom_in", "zoom_out", "zoom_in", "pan_right")[i % 4]
+            upd["transition_in"] = ("zoom", "whip", "zoom", "glitch", "flash")[i % 5] if i else "cut"
+            upd["punch_in"] = i % 2 == 1
+        elif plan.energy == "medium":
+            upd["move"] = "zoom_in" if i % 2 == 0 else "zoom_out"
+            upd["transition_in"] = ("zoom" if i % 2 else "whip") if 0 < i < n else "cut"
+            upd["punch_in"] = i % 3 == 2
+        else:
+            upd["move"] = "zoom_in"
+            upd["transition_in"] = "fade" if i and i % 3 == 0 else "cut"
+        segs.append(sg.model_copy(update=upd))
+    return plan.model_copy(update={"segments": segs})
+
+
 def look_from_prompt(prompt: str) -> str:
     p = prompt.lower()
     for words, key in _LOOK_WORDS:
@@ -393,12 +459,13 @@ def plan_rules(materials: list[ClipMaterial], req: EditRequest) -> EditPlan:
     )
     plan = EditPlan(
         title=req.title, segments=segs, removed=removed, tighten=True, source="rules",
+        energy=energy_from_prompt(req.prompt),
         summary="Automatic cut without AI: removed dead air, pauses and filler words.",
         color=PlanColor(preset=preset, reason="From your prompt" if req.color_preset == "auto" else "Your choice"),
         captions=PlanCaptions(enabled=speech if req.captions is None else req.captions,
                               style=req.caption_style or "word_pop"),
     )  # fmt: skip
-    return _normalise(plan, req)
+    return auto_style(_normalise(plan, req))
 
 
 # ------------------------------------------------------------------------------- plan -> EDL
@@ -521,6 +588,7 @@ def plan_to_edl(plan: EditPlan, materials: list[ClipMaterial], req: EditRequest)
     # Segments, with alternating punch-ins across the jump cuts of a punch_in segment.
     segments: list[Segment] = []
     effects: list[Effect] = []
+    sfx: list[Sfx] = []
     cursor = 0.0
     zoom_toggle: dict[int, bool] = {}
     starts: list[float] = []
@@ -530,14 +598,39 @@ def plan_to_edl(plan: EditPlan, materials: list[ClipMaterial], req: EditRequest)
         segments.append(seg)
         starts.append(cursor)
         key = id(s)
+        end = cursor + seg.output_duration_s
+        jump = i > 0 and pieces[i - 1][0] is s  # a jump cut inside one planned segment
         if s.punch_in:
             on = zoom_toggle.get(key, False) if sum(1 for p in pieces if p[0] is s) > 1 else True
             zoom_toggle[key] = not on
             if on:
-                effects.append(Effect(t_in=round(cursor, 3), t_out=round(cursor + seg.output_duration_s, 3),
+                effects.append(Effect(t_in=round(cursor, 3), t_out=round(end, 3),
                                       type=EffectType.PUNCH_ZOOM, params={"scale": 1.18},
                                       reason="Punch-in for emphasis"))  # fmt: skip
-        cursor += seg.output_duration_s
+        if s.move in _MOVES and seg.output_duration_s > 0.8:
+            effects.append(Effect(t_in=round(cursor, 3), t_out=round(end, 3), type=EffectType(s.move),
+                                  params={"strength": 1.0}, reason="Camera move"))  # fmt: skip
+        if i > 0 and not jump and s.transition_in in _TRANSITIONS and s.transition_in != "cut":
+            a, b = max(0.0, cursor - 0.28), cursor + 0.28
+            effects.append(Effect(t_in=round(a, 3), t_out=round(b, 3), type=EffectType.TRANSITION,
+                                  params={"style": s.transition_in}, reason=f"{s.transition_in} transition"))  # fmt: skip
+            snd = _TRANSITION_SFX.get(s.transition_in)
+            if plan.sfx and snd:
+                lead = 0.32 if snd[0] in ("whoosh", "swoosh") else 0.04
+                sfx.append(Sfx(t=round(max(0.0, cursor - lead), 3), type=SfxType(snd[0]), volume_db=snd[1],
+                               reason=f"Sound for the {s.transition_in} transition"))  # fmt: skip
+        for h in s.hits:
+            if not (seg.src_in <= h.t < seg.src_out):
+                continue
+            t = cursor + (h.t - seg.src_in) / seg.speed
+            if h.kind in ("glitch", "flash", "shake"):
+                effects.append(Effect(t_in=round(t, 3), t_out=round(min(end, t + 0.3), 3), type=EffectType(h.kind),
+                                      params={}, reason="Emphasis"))  # fmt: skip
+            snd = _HIT_SFX.get(h.kind)
+            if plan.sfx and snd:
+                sfx.append(Sfx(t=round(max(0.0, t - 0.02), 3), type=SfxType(snd[0]), volume_db=snd[1],
+                               reason="Emphasis sound"))  # fmt: skip
+        cursor = end
 
     # Removed: notable cuts from the plan, jump-cut notes, then everything else unused.
     removed: list[RemovedRange] = list(cut_notes)
@@ -611,7 +704,7 @@ def plan_to_edl(plan: EditPlan, materials: list[ClipMaterial], req: EditRequest)
                   "language": language, "words": caps},
         audio=Audio(music=Music(enabled=req.music, mood="upbeat", asset_id="music" if req.music else None,
                                 duck_under_speech=True, volume_db=-16.0),
-                    denoise=True, normalize_lufs=-14.0),
+                    sfx=[x for x in sorted(sfx, key=lambda x: x.t) if x.t < cursor], denoise=True, normalize_lufs=-14.0),
         color=Color(preset=c.preset, exposure=c.exposure, contrast=c.contrast, saturation=c.saturation,
                     temperature=c.temperature),
     )  # fmt: skip

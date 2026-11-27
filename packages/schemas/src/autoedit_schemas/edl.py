@@ -41,6 +41,13 @@ class EffectType(StrEnum):
     SLOWMO = "slowmo"
     FREEZE = "freeze"
     SPEED_RAMP = "speed_ramp"
+    ZOOM_IN = "zoom_in"
+    ZOOM_OUT = "zoom_out"
+    PAN_LEFT = "pan_left"
+    PAN_RIGHT = "pan_right"
+    GLITCH = "glitch"
+    FLASH = "flash"
+    TRANSITION = "transition"  # params.style: zoom | whip | flash | glitch | fade; spans the cut
 
 
 class OverlayType(StrEnum):
@@ -56,6 +63,13 @@ class SfxType(StrEnum):
     IMPACT = "impact"
     POP = "pop"
     DING = "ding"
+    SWOOSH = "swoosh"
+    SWIPE = "swipe"
+    BOOM = "boom"
+    CLICK = "click"
+    GLITCH = "glitch"
+    RISER = "riser"
+    SHUTTER = "shutter"
 
 
 class Meta(StrictModel):
@@ -179,6 +193,7 @@ class Sfx(StrictModel):
     t: NonNegTime
     type: SfxType
     asset_id: Identifier | None = None
+    volume_db: float = Field(default=-10.0, ge=-40.0, le=0.0)
     reason: Reason = ""
 
 
