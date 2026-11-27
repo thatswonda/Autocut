@@ -28,7 +28,7 @@ from .styles import get_style
 log = logging.getLogger(__name__)
 
 PROMPTS = Path(__file__).parent / "prompts"
-PROMPT_VERSION = "storyboard.v1"
+PROMPT_VERSION = "storyboard.v2"
 
 # $ per million tokens (input, output). Used for usage records and the per-job cost ceiling.
 PRICES = {
@@ -429,7 +429,7 @@ def generate_composition(req: StoryboardRequest, brand: dict[str, Any], *, clien
     """Ask Claude for a storyboard; validate; one corrective retry."""
     usage = usage or Usage()
     client = client or CLIENT_FACTORY()
-    system = (PROMPTS / "storyboard.v1.md").read_text()
+    system = (PROMPTS / f"{PROMPT_VERSION}.md").read_text()
     messages: list[dict[str, Any]] = [{"role": "user", "content": _user_content(req)}]
     last_problems: list[str] = []
     for attempt in range(2):

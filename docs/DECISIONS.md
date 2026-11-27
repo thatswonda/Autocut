@@ -89,6 +89,20 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-510 | **Motion self-review:** after the storyboard, the page is laid out in the browser; scenes whose text cannot fit at a readable size get one rewrite with shorter copy. | PRD 5.10 step 8 for the most common defect, without rendering video. |
 | D-511 | **Music is the user's own upload** (MP3/M4A/AAC/WAV/OGG ≤ 25 MB) in both modes; no stock library yet. | Licensing stays with the user; a library needs a provider and license tracking (M7). |
 
+## Quality pass
+
+| # | Decision | Why |
+|---|---|---|
+| D-601 | **No stitched streams in delivered files.** Segments render to near-lossless intermediates (x264 CRF 10, PCM audio) with exact frame counts on the output timeline and last-frame padding; the final video is encoded once as one stream (CRF 18, 1080p default). | Owner reported hangs at cuts. Stream-copy joins put several encoder configurations and AAC priming gaps in one MP4, which players stall on; it also cost a second generation of quality. |
+| D-602 | **Looks are 3D LUTs generated from parameters** (filmic S-curve, highlight roll-off, lifted blacks, split and neutral toning, skin-protected saturation, teal/orange hue bending, monochrome mixes) after a per-shot gray-world white balance and gamma exposure fix; vignette, CAS-free unsharp and grain are separate filters. Judged on real phone footage. | The old eq/colorbalance chains were weak and indistinct; LUTs are how colorists grade. |
+| D-603 | **Effects are per-segment** (zoom in/out, pan, shake, punch-in from the full-resolution source) and **transitions are two halves at the cut** (zoom-blur, whip, flash, glitch, fade), so segments never overlap and sync is exact. | Overlapping xfade would need two decoders at once (memory) and break the single-timeline model. |
+| D-604 | **Sound effects and music beds are synthesised** (numpy/scipy): whoosh, swoosh, swipe, impact, boom, pop, click, ding, glitch, riser, shutter; four music moods with pads, bass, drums, arpeggio and side-chain. | No stock library or licensing questions; deterministic and instant. A licensed library can replace them later. |
+| D-605 | **Edit plan v2**: Claude sets energy, per-segment camera move, transition, hits and sound; rules mode styles by energy read from the prompt. | Owner asked for zoom, pan, glitch and sound effects driven by the content. |
+| D-606 | **Motion graphics "pro layers"**: scene camera push with background parallax, accent glow, deterministic particles, light streaks, corner accents, word-mask headline reveals, 3D-tilted product cards with light burst and gloss sweep, panel-wipe / zoom-through / motion-blurred push transitions, film grain and vignette; sound effects cued to the animation; music bed and voiceover on by default. | Owner found the output "like regular photos". |
+| D-607 | **Gemini text-to-speech** when `GEMINI_API_KEY` is set (30 prebuilt voices, plain-language direction such as accent and tone), model from `GEMINI_TTS_MODEL` with fallback to known names; any failure falls back to Piper and the render says so. Built from the documented REST shape; the docs host was unreachable from the build sandbox, so it is verified against a stand-in server only. | Owner has a Gemini key and wants it for voiceover. |
+| D-608 | **Brand intake reads every link plus up to two key inner pages per site** (about, products, pricing...), shares the photo quota across sites, accepts pasted lists of links and adds a link left in the box on send; uploads accept HEIC/HEIF/AVIF/GIF/BMP/TIFF. | Owner's second link was not used and iPhone photos could not be picked. |
+| D-609 | **`AUTOEDIT_RENDER_THREADS`** (1 on Starter, 2 on Standard): 1080p edit render peaks ~350 MB with 1 thread, ~390 MB with 2 (about twice as fast). | Keeps 1080p within 512 MB on Starter. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |

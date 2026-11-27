@@ -98,10 +98,15 @@ class MotionOptions(_In):
     brand_name: str = Field(default="", max_length=120)
     intro_template_id: str | None = None
     outro_template_id: str | None = None
-    voiceover: bool = False
-    voice: str = Field(default="female_us", max_length=32)
+    voiceover: bool = True
+    voice: str = Field(default="auto", max_length=32)
+    voice_style: str = Field(
+        default="", max_length=300, description="e.g. warm Nigerian English accent, upbeat"
+    )
     voiceover_captions: bool = False
+    music: Literal["auto", "upbeat", "corporate", "chill", "luxury", "none"] = "auto"
     music_asset_id: str | None = Field(default=None, max_length=64)
+    sfx: bool = True
 
 
 class ProjectCreate(_In):

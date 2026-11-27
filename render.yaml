@@ -37,5 +37,7 @@ services:
         value: "1"             # fits 512 MB; set 2 on the standard plan for ~2x faster renders
       - key: AUTOEDIT_WHISPER_MODEL
         value: base            # speech model for captions and cuts; "small" is more accurate (needs Standard)
+      - key: GEMINI_API_KEY
+        sync: false            # optional: Gemini voices for motion-graphics voiceovers (else the built-in voice)
       - key: ANTHROPIC_API_KEY
         sync: false            # Claude plans edits and writes motion storyboards; paste your key in Render

@@ -21,7 +21,8 @@ Full spec: [`docs/PRD.md`](docs/PRD.md) · Decisions: [`docs/DECISIONS.md`](docs
 | **M9 (interim)** Web app: prompt box with grade/style templates, edit decisions editor (reorder, cut, restore, grade sliders, caption fixes), re-render without re-analysis, SRT and edit-list downloads | ✅ usable now |
 | **M12–M16** Motion graphics: website and/or images and clips → brand kit → Claude storyboard (facts checked in code) → layout self-review → editable scenes → MP4; 10 templates incl. your own footage; six styles; free voiceover (4 voices) with optional captions; music | ✅ usable now (needs `ANTHROPIC_API_KEY`) |
 | **M17** Crossover: save any part of a finished video as an intro/outro template; footage scenes in motion videos | ✅ done |
-| M7 B-roll and sound effects (need a stock-media key) · M8 self-review of rendered edits · M10 payments (on hold) · M18 mobile | not started |
+| **Quality pass**: seamless single-encode renderer (no stalls at cuts), 1080p default, LUT-based grades with per-shot auto-correct, camera moves, transitions (zoom-blur, whip, flash, glitch, fade), synthesised sound effects and music beds; motion graphics with camera and parallax, light and particles, word reveals, 3D product cards, panel-wipe / zoom-through / push transitions, film grain, timed sound effects, music and voiceover on by default (Gemini voices with `GEMINI_API_KEY`) | ✅ done |
+| M7 B-roll from stock libraries (needs a Pexels/Pixabay key) · M8 self-review of rendered edits · M10 payments (on hold) · M18 mobile | not started |
 
 **Test phase:** billing is switched off. Everyone gets the `test` plan: up to 30 minutes of footage per
 project, 20 clips, unlimited projects, no watermark, and no upgrade prompts. No payment provider is

@@ -49,6 +49,18 @@ class PageSpec:
     anims: list[dict[str, Any]] = field(default_factory=list)
     counters: list[dict[str, Any]] = field(default_factory=list)
     footage: list[dict[str, Any]] = field(default_factory=list)
+    overlays: list[dict[str, Any]] = field(default_factory=list)
+
+
+class _Rand:
+    """Tiny deterministic generator so particle layouts are identical on every render."""
+
+    def __init__(self, seed: int):
+        self.x = seed % 2147483647 or 1
+
+    def uniform(self, a: float, b: float) -> float:
+        self.x = self.x * 48271 % 2147483647
+        return a + (b - a) * self.x / 2147483647
 
 
 @dataclass(frozen=True)
@@ -129,14 +141,15 @@ class _Builder:
         return f'<img class="{cls}" src="{_e(self.assets[asset_id])}" alt="">'
 
     def words(self, text: str) -> str:
-        return " ".join(f'<span class="w">{_e(w)}</span>' for w in (text or "").split())
+        return " ".join(
+            f'<span class="w"><span class="wi">{_e(w)}</span></span>' for w in (text or "").split()
+        )
 
     def headline(self, sid: str, text: str, max_u: float, min_u: float = 4.0, cls: str = "",
                  maxh: float = 60) -> str:  # fmt: skip
         if not text:
             return ""
-        anim = self.style.headline_anim
-        inner = self.words(text) if anim == "pop_words" else _e(text)
+        inner = self.words(text)
         return (
             f'<h1 class="headline fit {cls}" dir="auto" data-max="{max_u}" data-min="{min_u}" '
             f'data-maxh="{maxh}" data-label="{sid} headline">{inner}</h1>'
@@ -172,17 +185,21 @@ class _Builder:
 
         # Shared entrances (selectors only match when the template rendered that element).
         st = self.style
-        self.anim(f"#{sid} .kicker", "fade_up", t0 + 0.05 * k, 0.6)
-        if st.headline_anim == "pop_words":
-            self.anim(f"#{sid} .headline .w", "pop", t0 + 0.12 * k, 0.55, stagger=0.07)
-        else:
-            self.anim(f"#{sid} .headline", st.headline_anim, t0 + 0.12 * k, 0.8)
-        self.anim(f"#{sid} .bar", "bar_grow", t0 + 0.35 * k, 0.6)
-        self.anim(f"#{sid} .subtext", st.body_anim, t0 + 0.45 * k, 0.7)
+        ease_out = "cubic-bezier(.16,1,.3,1)"
+        self.anim(f"#{sid} .kicker", "track_in", t0 + 0.05 * k, 0.8, easing=ease_out)
+        word_anim = {"pop_words": "pop", "mask_reveal": "word_up", "blur_in": "word_blur",
+                     "slide_left": "word_slide"}.get(st.headline_anim, "word_up")  # fmt: skip
+        target = f"#{sid} .headline .w" if word_anim == "pop" else f"#{sid} .headline .wi"
+        self.anim(target, word_anim, t0 + 0.14 * k, 0.75, stagger=0.065, easing=ease_out)
+        self.anim(f"#{sid} .bar", "bar_grow", t0 + 0.45 * k, 0.7, easing=ease_out)
+        self.anim(f"#{sid} .subtext", "soft_up", t0 + 0.5 * k, 0.8, easing=ease_out)
+        # Camera: a slow push on the content and a counter-drift on the background (parallax).
+        self.anim(f"#{sid} > .content", "cam_push", t0 - 0.4, dur + 0.8, easing="linear")
+        self.anim(f"#{sid} > .bg", "cam_drift", t0 - 0.4, dur + 0.8, easing="linear")
 
-        # Background ambience.
-        bg_html = self.background(sid, t0, dur)
-        del c, prev, index
+        # Background ambience and light.
+        bg_html = self.background(sid, t0, dur) + self.fx_layers(sc, index, t0, dur)
+        del c, prev
         # Logos sit on a light plate when the scene color would swallow them.
         plate = self.colors.get("background", "#ffffff")
         needs_plate = contrast(surf.bg, plate) > 1.6
@@ -196,6 +213,31 @@ class _Builder:
             f'<section class="scene tpl-{tpl} align-{align}" id="{sid}" style="{style_vars}">'
             f'{bg_html}<div class="content">{body}</div></section>'
         )
+
+    def fx_layers(self, sc: Scene, index: int, t0: float, dur: float) -> str:
+        """Light, particles and accents that make a scene feel shot rather than laid out."""
+        sid = sc.id
+        if sc.template == "footage":
+            self.anim(f"#{sid} .streak", "streak", t0 + 0.25, 1.1, easing="cubic-bezier(.4,0,.2,1)")
+            return '<div class="fx"><i class="streak"></i></div>'
+        calm = self.style.key in ("clean_minimal", "luxury", "editorial")
+        n = 7 if calm else 14
+        rnd = _Rand(index * 7919 + 17)
+        dots = []
+        for _ in range(n):
+            size = rnd.uniform(0.5, 1.6 if calm else 2.4)
+            dots.append(f'<i class="dot" style="left:{rnd.uniform(2, 98):.1f}%;top:{rnd.uniform(5, 98):.1f}%;'
+                        f'width:calc(var(--u)*{size:.2f});height:calc(var(--u)*{size:.2f});'
+                        f'opacity:{rnd.uniform(0.25, 0.75):.2f}"></i>')  # fmt: skip
+        self.anim(f"#{sid} .dot", "float_up", t0 - 0.8, dur + 1.4, stagger=0.0, easing="linear")
+        self.anim(f"#{sid} .glow", "glow_drift", t0 - 0.5, dur + 1.0, easing="ease-in-out")
+        self.anim(f"#{sid} .streak", "streak", t0 + 0.3, 1.2, easing="cubic-bezier(.4,0,.2,1)")
+        self.anim(
+            f"#{sid} .corner", "corner_draw", t0 + 0.35, 0.7, stagger=0.12, easing="cubic-bezier(.16,1,.3,1)"
+        )
+        side = "l" if index % 2 else "r"
+        corners = "" if calm else '<i class="corner tl"></i><i class="corner br"></i>'
+        return f'<div class="fx"><i class="glow g{side}"></i><i class="streak"></i>{"".join(dots)}{corners}</div>'
 
     def background(self, sid: str, t0: float, dur: float) -> str:
         kind = self.style.background
@@ -237,12 +279,27 @@ class _Builder:
 
     def tpl_product_reveal(self, sc: Scene, t0: float, k: float) -> str:
         c = sc.content
-        image = self.img(c.assets[0] if c.assets else None, "product")
+        aid = c.assets[0] if c.assets else None
+        image = self.img(aid, "product")
+        # Photos with a background become a tilted card; transparent PNG cut-outs float freely.
+        is_card = bool(aid) and not str(self.assets.get(aid or "", "")).lower().endswith(".png")
+        d = sc.t_out - t0
+        self.anim(f"#{sc.id} .burst", "spin_in", t0, d, easing="linear")
         self.anim(f"#{sc.id} .plate", "pop", t0 + 0.0, 0.7)
-        self.anim(f"#{sc.id} .media", "scale_in", t0 + 0.1 * k, 0.9)
-        self.anim(f"#{sc.id} .product", "ken_burns", t0, sc.t_out - t0, easing="linear")
+        self.anim(f"#{sc.id} .media", "tilt_in", t0 + 0.1 * k, 1.1, easing="cubic-bezier(.16,1,.3,1)")
+        self.anim(
+            f"#{sc.id} .floaty",
+            "bob",
+            t0 + 1.0,
+            2.6,
+            iterations=max(1.0, (d - 1.0) / 2.6),
+            easing="ease-in-out",
+        )
+        self.anim(f"#{sc.id} .shine", "shine", t0 + 0.95 * k + 0.2, 1.0, easing="cubic-bezier(.4,0,.2,1)")
         media = (
-            f'<div class="media-wrap"><i class="plate"></i><div class="media">{image}</div></div>'
+            f'<div class="media-wrap"><i class="burst"></i><i class="plate"></i>'
+            f'<div class="media"><div class="floaty{" card" if is_card else ""}">{image}<i class="shine"></i></div>'
+            f"{'<i class=reflect></i>' if is_card else ''}</div></div>"
             if image
             else ""
         )
@@ -254,7 +311,7 @@ class _Builder:
     def tpl_device_mockup(self, sc: Scene, t0: float, k: float) -> str:
         c = sc.content
         shot = self.img(c.assets[0] if c.assets else None, "screen")
-        self.anim(f"#{sc.id} .phone", "rise", t0 + 0.05 * k, 0.9)
+        self.anim(f"#{sc.id} .phone", "phone_in", t0 + 0.05 * k, 1.1, easing="cubic-bezier(.16,1,.3,1)")
         self.anim(
             f"#{sc.id} .screen", "scroll", t0 + 0.9, max(0.5, sc.t_out - t0 - 1.2), easing="ease-in-out"
         )
@@ -352,7 +409,11 @@ class _Builder:
         self.anim(f"#{sc.id} .cta", "pop", t0 + 0.55 * k, 0.6)
         self.anim(f"#{sc.id} .cta", "pulse", t0 + 1.4, 1.2, iterations=max(1, (sc.t_out - t0 - 1.4) / 1.2))
         self.anim(f"#{sc.id} .logo-small", "fade_up", t0 + 0.1, 0.6)
-        cta = f'<div class="cta" dir="auto">{_e(c.cta)}</div>' if c.cta else ""
+        self.anim(
+            f"#{sc.id} .cta .shine", "shine", t0 + 1.0, 0.9, iterations=2, easing="cubic-bezier(.4,0,.2,1)"
+        )
+        cta = (f'<div class="cta" dir="auto"><span>{_e(c.cta)}</span><span class="arrow">&rarr;</span>'
+               f'<i class="shine"></i></div>' if c.cta else "")  # fmt: skip
         return (
             f"{self.logo('logo-small')}{self.headline(sc.id, c.headline, 11, 5, maxh=36)}{cta}"
             f"{self.text(sc.id, 'subtext', c.subtext, 4, 2.8)}"
@@ -362,6 +423,8 @@ class _Builder:
     def build(self) -> str:
         scenes = sorted(self.comp.scenes, key=lambda s: s.t_in)
         layers = []
+        overlays: list[str] = []
+        wipes: list[dict[str, Any]] = []
         n = len(scenes)
         for i, sc in enumerate(scenes):
             prev = scenes[i - 1] if i else None
@@ -376,23 +439,45 @@ class _Builder:
             )
             tr = sc.transition_out
             if i < n - 1 and tr.type != "cut" and tr.duration_s > 0:
-                t = sc.t_out - tr.duration_s
-                self.anim(f"#{sc.id}", f"out_{tr.type}", t, tr.duration_s, easing="cubic-bezier(.65,0,.35,1)")
-                if tr.type == "slide":
-                    nxt = scenes[i + 1]
-                    self.anim(f"#{nxt.id}", "in_slide", t, tr.duration_s, easing="cubic-bezier(.65,0,.35,1)")
+                d = max(tr.duration_s, 0.35)
+                t = sc.t_out - d
+                nxt = scenes[i + 1]
+                io = "cubic-bezier(.65,0,.35,1)"
+                if tr.type == "wipe":
+                    # Two brand-colored panels sweep across; the scenes swap underneath at the midpoint.
+                    wid = f"wipe{i}"
+                    overlays.append(
+                        f'<div class="wipe" id="{wid}"><i class="p1"></i><i class="p2"></i></div>'
+                    )
+                    self.anim(f"#{wid} .p1", "panel_sweep", t, d, easing=io)
+                    self.anim(f"#{wid} .p2", "panel_sweep", t + 0.06, d, easing=io)
+                    self.anim(f"#{sc.id}", "out_hold", t, d, easing="linear")
+                    wipes.append({"id": wid, "from": round(t, 4), "to": round(t + d + 0.08, 4)})
+                elif tr.type == "zoom":
+                    self.anim(f"#{sc.id}", "out_zoom", t, d, easing=io)
+                    self.anim(f"#{nxt.id}", "in_zoom", t, d, easing=io)
+                elif tr.type == "slide":
+                    self.anim(f"#{sc.id}", "out_slide", t, d, easing=io)
+                    self.anim(f"#{nxt.id}", "in_slide", t, d, easing=io)
+                else:
+                    self.anim(f"#{sc.id}", f"out_{tr.type}", t, d, easing=io)
         st = self.style
         rtl = self.comp.meta.language.split("-")[0].lower() in RTL_LANGS
         css = CSS.replace("__DISPLAY__", _stack(st.display_font)).replace("__BODY__", _stack(st.body_font))
         css = css.replace("__DW__", str(st.display_weight)).replace("__BW__", str(st.body_weight))
         css = css.replace("__TRACK__", f"{st.headline_tracking}em").replace("__RADIUS__", str(st.radius))
         css = css.replace("__UPPER__", "uppercase" if st.uppercase_headlines else "none")
+        self.spec.overlays = wipes
+        self.anim("#grain", "grain", 0, max(0.5, self.comp.meta.duration_s), easing="steps(240)")
         spec = json.dumps(self.spec.__dict__)
         return (
             '<!doctype html><html><head><meta charset="utf-8">'
             f"<style>{_font_faces()}\n{css}</style></head>"
-            f'<body><div id="stage" dir="{"rtl" if rtl else "ltr"}" lang="{_e(self.comp.meta.language)}">'
+            f'<body><div id="stage" dir="{"rtl" if rtl else "ltr"}" lang="{_e(self.comp.meta.language)}" '
+            f'style="--wipe1:{self.colors.get("accent", "#FF5A1F")};--wipe2:{self.colors.get("primary", "#111111")}">'
             + "".join(layers)
+            + "".join(overlays)
+            + '<div id="grain"></div><div id="vignette"></div>'
             + f"</div><script>window.__SPEC={spec};\n{RUNTIME_JS}</script></body></html>"
         )
 
@@ -510,4 +595,41 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}
 .logo-hero:not(.logo-text){background:var(--plate);padding:calc(var(--u)*var(--plate-pad)*2.2);border-radius:calc(var(--u)*3)}
 .logo-small img{max-height:calc(var(--u)*10);max-width:calc(var(--u)*40);object-fit:contain}
 .logo-small.logo-text{font-size:calc(var(--u)*6)}
+
+/* ---- pro layers: camera, light, particles, accents, transitions, grain ---- */
+.scene > .content{transform-origin:50% 55%;will-change:transform}
+.fx{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.glow{position:absolute;width:calc(var(--u)*110);height:calc(var(--u)*110);border-radius:50%;
+  background:radial-gradient(circle,color-mix(in srgb,var(--accent) 55%,transparent) 0%,transparent 62%);opacity:.38;filter:blur(calc(var(--u)*2))}
+.glow.gr{right:-38%;top:-22%}.glow.gl{left:-38%;bottom:-20%}
+.streak{position:absolute;top:-30%;left:-60%;width:38%;height:160%;transform:rotate(18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),rgba(255,255,255,.04),transparent);opacity:0}
+.dot{position:absolute;border-radius:50%;background:color-mix(in srgb,var(--accent) 70%,#fff)}
+.corner{position:absolute;width:calc(var(--u)*14);height:calc(var(--u)*14);border-color:var(--accent);border-style:solid;opacity:.9}
+.corner.tl{left:calc(var(--u)*5);top:calc(var(--u)*5);border-width:calc(var(--u)*.6) 0 0 calc(var(--u)*.6);transform-origin:0 0}
+.corner.br{right:calc(var(--u)*5);bottom:calc(var(--u)*5);border-width:0 calc(var(--u)*.6) calc(var(--u)*.6) 0;transform-origin:100% 100%}
+.headline .w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.08em;margin-bottom:-.08em}
+.headline .wi{display:inline-block;will-change:transform}
+.burst{position:absolute;width:calc(var(--u)*130);height:calc(var(--u)*130);border-radius:50%;opacity:.28;
+  background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--accent) 70%,transparent) 0deg 7deg,transparent 7deg 22deg);
+  -webkit-mask:radial-gradient(circle,#000 18%,transparent 66%);mask:radial-gradient(circle,#000 18%,transparent 66%)}
+.tpl-product_reveal .media{perspective:calc(var(--u)*120)}
+.floaty{position:relative;display:grid;place-items:center;max-width:100%;max-height:100%;overflow:hidden;border-radius:calc(var(--u)*2)}
+.floaty .product{position:relative}
+.shine{position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);
+  transform:translateX(-120%);mix-blend-mode:soft-light;pointer-events:none}
+.cta{position:relative;overflow:hidden;gap:calc(var(--u)*2)}
+.cta .arrow{display:inline-block;font-weight:800}
+.wipe{position:absolute;inset:0;z-index:999;pointer-events:none;display:none}
+.wipe i{position:absolute;inset:-2% -2%;transform:translateX(-102%)}
+.wipe .p1{background:var(--wipe1,#FF5A1F)}.wipe .p2{background:var(--wipe2,#111)}
+#grain{position:absolute;inset:-50%;z-index:1000;pointer-events:none;opacity:.07;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+#vignette{position:absolute;inset:0;z-index:1001;pointer-events:none;background:radial-gradient(120% 95% at 50% 45%,transparent 55%,rgba(0,0,0,.28) 100%)}
+
+.floaty.card{border:calc(var(--u)*1.1) solid #fff;border-radius:calc(var(--u)*3);transform:rotateY(-9deg) rotateX(4deg);
+  box-shadow:0 calc(var(--u)*5) calc(var(--u)*9) rgba(0,0,0,.42),0 calc(var(--u)*1) calc(var(--u)*2) rgba(0,0,0,.25)}
+.floaty.card .product{border-radius:calc(var(--u)*1.6);max-height:calc(var(--u)*72)}
+.reflect{position:absolute;left:12%;right:12%;bottom:-6%;height:10%;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(0,0,0,.35),transparent);filter:blur(calc(var(--u)*1.2))}
 """

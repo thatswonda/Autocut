@@ -220,7 +220,7 @@
       outroId: null,
       poster: null,
       edit: { aspect: "9:16", color_preset: "auto", target: "" },
-      motion: { aspect: "9:16", duration_s: 20, style: "bold_pop", voiceover: false, voice: "female_us", vo_captions: false, music: null },
+      motion: { aspect: "9:16", duration_s: 20, style: "bold_pop", voiceover: true, voice: "auto", voice_style: "", vo_captions: false, music: null, mood: "auto", sfx: true },
     },
   };
   const limitS = () => state.me?.limits?.max_total_raw_s ?? 1800;
@@ -464,13 +464,18 @@
             : `<div class="trow">
               <div class="trow-head"><h3>Motion style</h3><span>Fonts, motion and layout. Your brand colors are applied on top.</span></div>
               <div class="tiles">${styleTiles(d.motion.style, "data-style")}</div></div>
-            <div class="trow"><div class="trow-head"><h3>Sound</h3><span>Free voiceover generated on the server, and your own music</span></div>
+            <div class="trow"><div class="trow-head"><h3>Sound</h3><span>${state.catalog.gemini_voice ? "Voiceover by Gemini" : "Voiceover generated on the server"}, music and sound effects</span></div>
               <div class="row">
-                <label class="field2" for="opt-vo">Voiceover<select id="opt-vo"><option value="0" ${d.motion.voiceover ? "" : "selected"}>Off</option><option value="1" ${d.motion.voiceover ? "selected" : ""}>On</option></select></label>
+                <label class="field2" for="opt-vo">Voiceover<select id="opt-vo"><option value="1" ${d.motion.voiceover ? "selected" : ""}>On</option><option value="0" ${d.motion.voiceover ? "" : "selected"}>Off</option></select></label>
                 ${d.motion.voiceover ? `<label class="field2" for="opt-voice">Voice<select id="opt-voice">${(state.catalog.voices || []).map((v) => `<option value="${v.key}" ${d.motion.voice === v.key ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label>
+                  <label class="field2" for="opt-vostyle" style="min-width:220px;flex:1">Voice direction<input id="opt-vostyle" type="text" maxlength="300" value="${esc(d.motion.voice_style)}" placeholder="e.g. warm Nigerian English accent, upbeat and confident" style="height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);padding:0 10px"></label>
                   <label class="field2" for="opt-vocap">Captions<select id="opt-vocap"><option value="0" ${d.motion.vo_captions ? "" : "selected"}>Off</option><option value="1" ${d.motion.vo_captions ? "selected" : ""}>On</option></select></label>` : ""}
-                <div class="field2">Music${d.motion.music ? `<div class="row" style="gap:6px"><span class="chip">${icon.check} ${esc(d.motion.music.filename)}</span><button type="button" class="btn small ghost" data-action="dmusic-clear">Remove</button></div>`
-                  : `<div class="row" style="gap:6px"><button type="button" class="btn small" data-action="dmusic-pick">${icon.plus} Add music</button></div>`}</div>
+              </div>
+              <div class="row">
+                ${d.motion.music ? `<div class="field2">Music<div class="row" style="gap:6px"><span class="chip">${icon.check} ${esc(d.motion.music.filename)}</span><button type="button" class="btn small ghost" data-action="dmusic-clear">Use built-in</button></div></div>`
+                  : `<label class="field2" for="opt-mood">Music<select id="opt-mood">${(state.catalog.music_moods || []).map((m) => `<option value="${m.key}" ${d.motion.mood === m.key ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
+                     <div class="field2">&nbsp;<button type="button" class="btn small" data-action="dmusic-pick">${icon.plus} Use my own track</button></div>`}
+                <label class="field2" for="opt-sfx">Sound effects<select id="opt-sfx"><option value="1" ${d.motion.sfx ? "selected" : ""}>On</option><option value="0" ${d.motion.sfx ? "" : "selected"}>Off</option></select></label>
               </div></div>`}
           ${myTemplateTiles(d.introId, d.outroId, "d")}
           <div class="trow"><div class="trow-head"><h3>Try</h3></div>
@@ -671,7 +676,8 @@
           prompt: d.prompt.trim(),
           options: { aspect: d.motion.aspect, duration_s: d.motion.durationTouched || !asked ? d.motion.duration_s : Math.min(60, Math.max(6, Math.round(asked))),
                      style: d.motion.style, voiceover: !!d.motion.voiceover, voice: d.motion.voice,
-                     voiceover_captions: !!d.motion.vo_captions, music_asset_id: d.motion.music?.id || null,
+                     voice_style: d.motion.voice_style || "", voiceover_captions: !!d.motion.vo_captions,
+                     music: d.motion.mood || "auto", music_asset_id: d.motion.music?.id || null, sfx: !!d.motion.sfx,
                      intro_template_id: d.introId, outro_template_id: d.outroId },
           source_urls: links,
           asset_ids: d.images.filter((i) => i.status === "ready").map((i) => i.asset.id),
@@ -1686,6 +1692,7 @@
       if (ln) { ln.text = el.value; return markDirty(); }
     }
     if (el.id === "r-prompt") { state.ui.renderOpts.prompt = el.value; return; }
+    if (el.id === "opt-vostyle") { state.draft.motion.voice_style = el.value; return; }
     if (el.dataset.pcolor) { const lab = el.closest("label")?.querySelector(".mono"); if (lab) lab.textContent = el.value; }
   });
 
@@ -1698,6 +1705,8 @@
     if (el.id === "opt-vo") { d.motion.voiceover = el.value === "1"; return rerenderComposer(); }
     if (el.id === "opt-voice") { d.motion.voice = el.value; return; }
     if (el.id === "opt-vocap") { d.motion.vo_captions = el.value === "1"; return; }
+    if (el.id === "opt-mood") { d.motion.mood = el.value; return; }
+    if (el.id === "opt-sfx") { d.motion.sfx = el.value === "1"; return; }
     if (el.id === "auth") { d.authorized = el.checked; return rerenderComposer(); }
     if (el.dataset.imgKind) {
       const im = d.images.find((x) => x.key === el.dataset.imgKind);

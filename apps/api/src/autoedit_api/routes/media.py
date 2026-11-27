@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from autoedit_motion.storyboard import ai_available
 from autoedit_motion.styles import STYLES
-from autoedit_motion.voice import VOICES
+from autoedit_motion.voice import GEMINI_VOICES, VOICES, gemini_available
 from autoedit_render.presets import COLOR_PRESETS
 from autoedit_schemas import Composition, SchemaValidationError, parse_model
 
@@ -91,7 +91,24 @@ def catalog() -> dict[str, object]:
             for s in STYLES.values()
         ],
         "aspects": ["9:16", "1:1", "4:5", "16:9"],
-        "voices": [{"key": k, "name": v[2]} for k, v in VOICES.items()],
+        "gemini_voice": gemini_available(),
+        "voices": [
+            {"key": "auto", "name": "Best available" + (" (Gemini)" if gemini_available() else "")},
+            *(
+                {"key": k, "name": f"Gemini · {k} ({v.lower()})"}
+                for k, v in GEMINI_VOICES.items()
+                if gemini_available()
+            ),
+            *({"key": k, "name": f"Built-in · {v[2]}"} for k, v in VOICES.items()),
+        ],
+        "music_moods": [
+            {"key": "auto", "name": "Auto (matches the style)"},
+            {"key": "upbeat", "name": "Upbeat"},
+            {"key": "corporate", "name": "Corporate"},
+            {"key": "chill", "name": "Chill"},
+            {"key": "luxury", "name": "Luxury"},
+            {"key": "none", "name": "No music"},
+        ],
     }
 
 

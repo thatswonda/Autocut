@@ -411,7 +411,8 @@ def render_job(render_id: str) -> str:
             opts = project.options or {}
             music_asset = db.get(Asset, opts["music_asset_id"]) if opts.get("music_asset_id") else None
             want_vo = comp.voiceover.enabled and bool(comp.voiceover.script)
-            needs_audio = want_vo or (music_asset is not None and comp.audio.music.enabled)
+            music_choice = str(opts.get("music") or "auto")
+            needs_audio = True  # sound effects and music on every motion video (unless turned off)
             main = workdir / "motion.mp4" if (intro or outro) else out
             silent = workdir / "motion_silent.mp4" if needs_audio else main
             res = render_composition(comp, assets, silent, workdir=workdir / "page", short_edge=short_edge,
@@ -419,21 +420,32 @@ def render_job(render_id: str) -> str:
                                                                  "Animating"))  # fmt: skip
             width, height, duration = res.width, res.height, res.duration_s
             if needs_audio:
-                from autoedit_motion.voice import speak
-                from autoedit_render.motion_audio import Line, mix
+                from autoedit_motion.voice import speak_best
+                from autoedit_render.motion_audio import Line, mix, motion_cues
+                from autoedit_render.music import bed_file, mood_for_style
 
                 lines: list[Line] = []
                 if want_vo:
                     progress(0.82, "Recording the voiceover")
-                    spoken = speak([(ln.t_in, ln.text) for ln in comp.voiceover.script], workdir / "vo",
-                                   voice=opts.get("voice") or comp.voiceover.voice or "female_us")  # fmt: skip
+                    spoken, vo_note = speak_best([(ln.t_in, ln.text) for ln in comp.voiceover.script], workdir / "vo",
+                                                 voice=str(opts.get("voice") or "auto"),
+                                                 style=str(opts.get("voice_style") or ""))  # fmt: skip
                     lines = [Line(x.t_in, x.text, x.path, x.duration_s) for x in spoken]
-                music_path = (_local(storage, music_asset.storage_key, workdir, f"music{Path(music_asset.storage_key).suffix}")
-                              if music_asset is not None and music_asset.user_id == project.user_id else None)  # fmt: skip
+                    if vo_note:
+                        s = {**s, "warnings": [*s.get("warnings", []), vo_note]}
+                music_path: Path | None = None
+                if music_asset is not None and music_asset.user_id == project.user_id:
+                    music_path = _local(storage, music_asset.storage_key, workdir,
+                                        f"music{Path(music_asset.storage_key).suffix}")  # fmt: skip
+                elif music_choice != "none":
+                    mood = mood_for_style(comp.meta.style) if music_choice == "auto" else music_choice
+                    music_path = bed_file(mood, duration)
                 progress(0.88, "Mixing the sound")
                 mix(silent, main, workdir=workdir / "mix", total_s=duration, lines=lines, music=music_path,
+                    music_db=-17.0 if lines else -11.0,
                     captions=bool(opts.get("voiceover_captions")) and want_vo, caption_style="clean",
-                    width=width, height=height, accent=comp.brand.colors.accent or "#FFD400")  # fmt: skip
+                    width=width, height=height, accent=comp.brand.colors.accent or "#FFD400",
+                    sfx=motion_cues(comp) if opts.get("sfx", True) else [])  # fmt: skip
             if res.warnings:
                 s = {**s, "warnings": res.warnings}
             if intro or outro:
