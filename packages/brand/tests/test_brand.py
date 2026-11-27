@@ -112,3 +112,12 @@ def test_palette_fallbacks() -> None:
     colors = brand_colors(_png((20, 90, 200)), [], None)
     assert colors["primary"].startswith("#")
     assert set(colors) == {"primary", "secondary", "accent", "background", "text"}
+
+
+def test_build_kit_reads_every_link_and_key_inner_pages(site: str) -> None:
+    second = site.replace("127.0.0.1", "localhost")
+    kit = build_kit([site + "/", second + "/"], [])
+    hosts = {s.url.split("/")[2] for s in kit.sites}
+    assert {site.split("/")[2], second.split("/")[2]} <= hosts  # both links were read
+    assert any(s.url.endswith("/shop") for s in kit.sites)  # the "Order now" shop page too
+    assert kit.warnings == []

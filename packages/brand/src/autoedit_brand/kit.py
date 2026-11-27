@@ -63,10 +63,16 @@ def _try_image(url: str, kind: str, key: str, source: str) -> ImageAsset | None:
         return None
 
 
-def build_kit(urls: list[str], uploads: list[ImageAsset]) -> BrandKit:
+def build_kit(
+    urls: list[str], uploads: list[ImageAsset], *, inner_pages: int = 2, photo_total: int = 10
+) -> BrandKit:
+    """Read every link (and up to ``inner_pages`` key pages of each site: about, products, pricing...),
+    share the photo quota fairly between sites, and pick the brand colors."""
     kit = BrandKit()
     kit.images.extend(uploads)
-    for i, url in enumerate(urls[:5]):
+    links = list(dict.fromkeys(u for u in urls if u))[:5]
+    per_site = max(2, photo_total // max(1, len(links)))
+    for i, url in enumerate(links):
         try:
             page = fetch(url)
         except FetchError as exc:
@@ -74,21 +80,29 @@ def build_kit(urls: list[str], uploads: list[ImageAsset]) -> BrandKit:
             continue
         site = extract(page.body.decode("utf-8", "replace"), page.url)
         kit.sites.append(site)
-        if i == 0:
-            kit.name = site.name
-            kit.language = site.language
+        if i == 0 or not kit.name:
+            kit.name = kit.name or site.name
+            kit.language = kit.language or site.language
+        for sub_url in site.inner_links[:inner_pages]:
+            try:
+                sub_page = fetch(sub_url)
+            except FetchError:
+                continue
+            kit.sites.append(extract(sub_page.body.decode("utf-8", "replace"), sub_page.url))
         if not any(im.kind == "logo" for im in kit.images):
             for j, lu in enumerate(site.logo_urls):
-                logo = _try_image(lu, "logo", f"web_logo{j}", site.source_id)
+                logo = _try_image(lu, "logo", f"web{i}_logo{j}", site.source_id)
                 if logo:
                     kit.images.append(logo)
                     break
-        for j, iu in enumerate(site.image_urls[:6]):
-            if sum(1 for im in kit.images if im.kind == "photo") >= 6:
+        taken = 0
+        for j, iu in enumerate(site.image_urls[:12]):
+            if taken >= per_site or sum(1 for im in kit.images if im.kind == "photo") >= photo_total:
                 break
             img = _try_image(iu, "photo", f"web{i}_img{j}", site.source_id)
             if img:
                 kit.images.append(img)
+                taken += 1
     logo = next((im for im in kit.images if im.kind == "logo"), None)
     kit.logo_key = logo.key if logo else None
     theme = kit.sites[0].theme_color if kit.sites else None
@@ -99,6 +113,6 @@ def build_kit(urls: list[str], uploads: list[ImageAsset]) -> BrandKit:
         kit.warnings.append(
             "No logo found: the brand name is shown in type instead. Upload a logo to use it."
         )
-    if urls and not kit.sites:
+    if links and not kit.sites:
         kit.warnings.append("None of the links could be read; the video uses only your prompt and files.")
     return kit

@@ -21,7 +21,7 @@
   const pct = (x) => `${Math.round((x || 0) * 100)}%`;
   const clone = (x) => JSON.parse(JSON.stringify(x));
   const VIDEO_EXT = [".mp4", ".mov", ".mkv", ".webm"];
-  const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".webp"];
+  const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif", ".avif", ".gif", ".bmp", ".tif", ".tiff"];
   const extOf = (name) => (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
   const URL_RE = /\b((?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s]*)?)/gi;
   const icon = {
@@ -427,7 +427,7 @@
             : "Add your website, logo or product photos and describe the video. Claude writes a storyboard from your real facts, you approve it, Autocut animates it."}</p>
         </div>
         <section class="box" id="box" aria-label="Prompt">
-          ${d.linkOpen && !editing ? `<div class="linkrow"><input id="link-input" type="url" placeholder="https://yourbusiness.com" autocomplete="off">
+          ${d.linkOpen && !editing ? `<div class="linkrow"><input id="link-input" type="url" placeholder="Paste one or more links: website, app, menu..." autocomplete="off">
             <button type="button" class="btn small" data-action="add-link">Add link</button><button type="button" class="btn small ghost" data-action="close-link">Cancel</button></div>` : ""}
           <div class="attach">${chips}</div>
           <textarea id="prompt" rows="2" placeholder="${esc(PLACEHOLDER[d.mode])}">${esc(d.prompt)}</textarea>
@@ -640,6 +640,7 @@
   }
 
   async function send() {
+    if ($("#link-input")?.value.trim()) addLink(true);  // a link typed but not yet added still counts
     const d = state.draft;
     const asked = lengthFromPrompt(d.prompt);
     const cs = composerState();
@@ -1632,14 +1633,23 @@
     }
   });
 
-  function addLink() {
+  /** Adds every address in the link box (paste several at once: spaces, commas or new lines). */
+  function addLink(quiet = false) {
     const input = $("#link-input");
-    const link = normaliseLink(input?.value);
-    if (!link) { toast("That doesn't look like a website address.", true); return; }
-    if (state.draft.links.length >= 5) { toast("Up to 5 links per project.", true); return; }
-    if (!state.draft.links.includes(link)) state.draft.links.push(link);
+    const raw = (input?.value || "").split(/[\s,;]+/).filter(Boolean);
+    if (!raw.length) { if (!quiet) toast("Paste a website address first.", true); return 0; }
+    let added = 0;
+    for (const r of raw) {
+      const link = normaliseLink(r);
+      if (!link) { toast(`"${r}" doesn't look like a website address.`, true); continue; }
+      if (state.draft.links.length >= 5) { toast("Up to 5 links per project.", true); break; }
+      if (!state.draft.links.includes(link)) { state.draft.links.push(link); added++; }
+    }
+    if (input) input.value = "";
     state.draft.linkOpen = false;
     rerenderComposer();
+    if (added && !quiet) toast(added > 1 ? `${added} links added` : "Link added. Add another from the + menu");
+    return added;
   }
 
   document.addEventListener("keydown", (e) => {

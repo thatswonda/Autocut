@@ -54,6 +54,22 @@ def _motion_project(client: TestClient, **extra: object) -> dict:
     return client.get(f"/v1/projects/{r.json()['id']}").json()
 
 
+def test_iphone_heic_photo_upload(client: TestClient) -> None:
+    import io
+
+    from PIL import Image
+    from pillow_heif import from_pillow
+
+    buf = io.BytesIO()
+    from_pillow(Image.new("RGB", (640, 480), (30, 120, 200))).save(buf, format="HEIF")
+    r = client.post(
+        "/v1/assets", files={"file": ("IMG_0042.HEIC", buf.getvalue(), "image/heic")}, data={"kind": "photo"}
+    )
+    assert r.status_code == 201, r.text
+    assert (r.json()["width"], r.json()["height"]) == (640, 480)
+    assert client.get(r.json()["url"]).headers["content-type"] == "image/jpeg"
+
+
 def test_motion_requires_authorization(client: TestClient) -> None:
     r = client.post("/v1/projects", json={"mode": "motion", "prompt": "A bakery promo"})
     assert r.status_code == 422 and r.json()["error"]["code"] == "brand_authorization_required"

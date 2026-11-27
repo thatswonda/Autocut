@@ -36,6 +36,7 @@ class SiteInfo:
     ctas: list[str] = field(default_factory=list)
     prices: list[str] = field(default_factory=list)
     language: str | None = None
+    inner_links: list[str] = field(default_factory=list)  # same-site pages worth reading (about, products...)
 
     def as_source_text(self) -> str:
         """Compact, source-labelled text for the storyboard prompt (bounded size)."""
@@ -135,6 +136,20 @@ def extract(html: str, url: str) -> SiteInfo:
         info.image_urls.append(src)
     info.image_urls = list(dict.fromkeys(info.image_urls))[:12]
     info.logo_urls = list(dict.fromkeys(info.logo_urls))[:5]
+
+    host = urlsplit(url).netloc.lower().removeprefix("www.")
+    keys = ("about", "product", "shop", "store", "service", "pricing", "price", "plan", "menu", "feature",
+            "catalog", "collection", "contact", "how-it-works", "faq")  # fmt: skip
+    for a in soup.find_all("a", href=True):
+        href = urljoin(url, str(a.get("href")))
+        parts = urlsplit(href)
+        if parts.scheme not in ("http", "https") or parts.netloc.lower().removeprefix("www.") != host:
+            continue
+        hay = (parts.path + " " + a.get_text(" ")).lower()
+        clean = f"{parts.scheme}://{parts.netloc}{parts.path}"
+        if any(k in hay for k in keys) and clean.rstrip("/") != url.split("?")[0].rstrip("/"):
+            info.inner_links.append(clean)
+    info.inner_links = list(dict.fromkeys(info.inner_links))[:6]
 
     for t in soup(["script", "style", "noscript", "svg", "iframe", "template"]):
         t.decompose()

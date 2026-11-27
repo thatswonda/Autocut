@@ -37,7 +37,7 @@ from ..storage import Storage, get_storage
 
 router = APIRouter(tags=["media"])
 
-IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp"}
+IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif", ".avif", ".gif", ".bmp", ".tif", ".tiff"}
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
@@ -113,7 +113,7 @@ async def upload_asset(
         raise ApiError(422, "bad_kind", "kind must be logo, photo, screenshot or music")
     name = Path(file.filename or "image").name
     if Path(name).suffix.lower() not in IMAGE_TYPES:
-        raise ApiError(415, "unsupported_image", "Images must be PNG, JPG or WebP")
+        raise ApiError(415, "unsupported_image", "Images must be JPG, PNG, WebP, HEIC, AVIF, GIF or TIFF")
     data = await file.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise ApiError(413, "image_too_large", "Images must be 15 MB or smaller")

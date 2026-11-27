@@ -8,6 +8,13 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageOps
 
+try:  # iPhone photos (HEIC/HEIF)
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except ImportError:  # pragma: no cover - optional on dev machines
+    pass
+
 
 @dataclass
 class Swatch:
