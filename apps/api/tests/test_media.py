@@ -196,6 +196,54 @@ def test_motion_with_footage_voiceover_and_music(client: TestClient, tmp_path: P
     assert mean > -35, vol[-300:]  # voice and music are audible, not the old silent track
 
 
+def test_change_storyboard_by_prompt_add_and_remove_photos(client: TestClient) -> None:
+    p = _motion_project(client)
+    pid = p["id"]
+    photo = next(a["id"] for a in p["motion"]["assets"] if a["kind"] == "photo")
+    new_photo = _image(client, "photo", (20, 160, 90))
+
+    r = client.post(f"/v1/projects/{pid}/revise", json={"message": "Make it 12 seconds and punchier",
+                                                       "asset_ids": [new_photo]})  # fmt: skip
+    assert r.status_code == 202, r.text
+    m = client.get(f"/v1/projects/{pid}").json()["motion"]
+    assert m["pending_kind"] is None and m["status"] == "ready"
+    comp = m["composition"]
+    assert comp["meta"]["duration_s"] == 12 and comp["scenes"][-1]["t_out"] == 12
+    assert comp["scenes"][0]["content"]["headline"] == "Revised hook"
+    assert (
+        m["revisions"][-1]["message"] == "Make it 12 seconds and punchier"
+        and "hook" in m["revisions"][-1]["reply"]
+    )
+    assert new_photo in [a["id"] for a in m["assets"]]  # the attached photo joined the project
+    assert client.get(f"/v1/projects/{pid}").json()["options"]["duration_s"] == 12
+
+    # Remove a photo a scene uses: the scene falls back to another image or to text.
+    used = [sc for sc in comp["scenes"] if photo in sc["content"].get("assets", [])]
+    assert used
+    d = client.delete(f"/v1/projects/{pid}/assets/{photo}")
+    assert d.status_code == 200, d.text
+    m = client.get(f"/v1/projects/{pid}").json()["motion"]
+    assert photo not in [a["id"] for a in m["assets"]]
+    assert all(photo not in sc["content"].get("assets", []) for sc in m["composition"]["scenes"])
+
+    # Claude can take photos out of the project when asked.
+    r = client.post(f"/v1/projects/{pid}/revise", json={"message": f"remove {new_photo} please"})
+    assert r.status_code == 202
+    m = client.get(f"/v1/projects/{pid}").json()["motion"]
+    assert new_photo not in [a["id"] for a in m["assets"]]
+
+    r = client.post(
+        f"/v1/projects/{pid}/revise", json={"message": "Make the voiceover sound Nigerian and warm"}
+    )
+    assert r.status_code == 202
+    assert (
+        client.get(f"/v1/projects/{pid}").json()["options"]["voice_style"] == "warm Nigerian English accent"
+    )
+
+    assert client.post(f"/v1/projects/{pid}/revise", json={"message": ""}).status_code == 422
+    assert client.post(f"/v1/projects/{pid}/more-photos").status_code == 409  # no website links here
+
+
 def test_edit_render_with_color_grade(client: TestClient, short_clip: Path) -> None:
     up = upload_file(client, short_clip)
     pid = client.post("/v1/projects", json={"mode": "edit", "upload_ids": [up["id"]],
@@ -270,3 +318,13 @@ def test_catalog(client: TestClient) -> None:
     assert {p["key"] for p in cat["color_presets"]} >= {"teal_orange", "warm_cinematic", "black_white"}
     assert {s["key"] for s in cat["motion_styles"]} >= {"bold_pop", "luxury", "editorial"}
     assert cat["ai_enabled"] is True
+
+
+def test_links_in_change_requests() -> None:
+    from autoedit_api.jobs_media import _MORE_PHOTOS_RE, _links_in
+
+    msg = "Use photos from https://shop.example.com/products and bsbmarket.com/about, then drop the car."
+    assert _links_in(msg) == ["https://shop.example.com/products", "https://bsbmarket.com/about"]
+    assert _links_in("make it 30 seconds") == []
+    assert _MORE_PHOTOS_RE.search("can you get more pictures of the shoes")
+    assert not _MORE_PHOTOS_RE.search("remove the photos of cars")

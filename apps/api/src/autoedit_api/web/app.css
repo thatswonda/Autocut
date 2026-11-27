@@ -511,3 +511,16 @@ details.more summary { cursor: pointer; font-weight: 600; font-size: 14px; paddi
   .toolbar .tselect { max-width: 120px; }
   .report .finding { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* motion: ask for changes, asset grid */
+.chatlog{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto;padding:4px 2px}
+.bubble{max-width:85%;padding:10px 12px;border-radius:14px;line-height:1.4;font-size:14px;white-space:pre-wrap}
+.bubble.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.bubble.ai{align-self:flex-start;background:var(--surface-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.bubble.ai.bad{border-color:var(--bad);color:var(--bad)}
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:6px}
+.asset-tile{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--surface-2)}
+.asset-tile .pic{display:block;aspect-ratio:1;background-size:cover;background-position:center}
+.asset-tile .kind{position:absolute;left:4px;bottom:4px;font-size:10px;padding:1px 6px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff}
+.asset-tile .x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:1;cursor:pointer}
+.asset-tile .x:disabled{opacity:.4;cursor:default}

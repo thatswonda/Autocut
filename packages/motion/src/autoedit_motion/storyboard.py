@@ -510,3 +510,87 @@ def regenerate_scene(comp: Composition, scene_id: str, note: str, req: Storyboar
     raise StoryboardError(
         "invalid_scene", "Claude's revised scene broke the rules twice: " + "; ".join(problems[:4])
     )
+
+
+def revise_composition(comp: Composition, message: str, req: StoryboardRequest, *, client: Any = None,
+                       usage: Usage | None = None, notes: list[str] | None = None) -> tuple[Composition, str, list[str], dict[str, Any]]:  # fmt: skip
+    """Apply a free-text change request to the whole storyboard. Returns (composition, reply, asset ids to
+    remove). Duration, style and aspect may change when asked; everything is validated like a new storyboard."""
+    from dataclasses import replace
+
+    from .styles import STYLES
+
+    usage = usage or Usage()
+    client = client or CLIENT_FACTORY()
+    system = (PROMPTS / "revise.v1.md").read_text()
+    extra = "\n".join(f"- {n}" for n in (notes or []))
+    content = [
+        *_user_content(req),
+        {"type": "text", "text": "# Current storyboard\n" + comp.model_dump_json(by_alias=True)},
+        {"type": "text", "text": "# Revision request\n" + (message.strip() or "Improve it.")
+         + (f"\n\n# What the system already did for this request\n{extra}" if extra else "")},
+    ]  # fmt: skip
+    messages: list[dict[str, Any]] = [{"role": "user", "content": content}]
+    brand = comp.brand.model_dump(by_alias=True)
+    known = {im.key for im in req.images}
+    problems: list[str] = []
+    for attempt in range(2):
+        text, raw = client.complete(system, messages, usage)
+        if usage.cost_usd > max_cost():
+            raise StoryboardError("cost_ceiling", f"Stopped: this change cost more than ${max_cost():.2f}.")
+        new: Composition | None = None
+        reply, remove = "", []
+        settings: dict[str, Any] = {}
+        try:
+            data = json.loads(_extract_json(text))
+            reply = str(data.get("reply") or "")[:600]
+            raw_settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+            settings = {}
+            if isinstance(raw_settings.get("voice_direction"), str):
+                settings["voice_style"] = raw_settings["voice_direction"].strip()[:300]
+            if isinstance(raw_settings.get("voiceover"), bool):
+                settings["voiceover"] = raw_settings["voiceover"]
+            if raw_settings.get("music") in ("auto", "upbeat", "corporate", "chill", "luxury", "none"):
+                settings["music"] = raw_settings["music"]
+            if isinstance(raw_settings.get("sfx"), bool):
+                settings["sfx"] = raw_settings["sfx"]
+            remove = [str(a) for a in data.get("remove_assets") or [] if str(a) in known]
+            cj = data.get("composition") or {}
+            meta = cj.get("meta") or {}
+            new_style = str(meta.get("style") or "")
+            new_aspect = str(meta.get("aspect") or "")
+            r2 = replace(
+                req,
+                duration_s=float(min(60.0, max(6.0, float(meta.get("duration_s") or req.duration_s)))),
+                style=new_style if new_style in STYLES else req.style,
+                aspect=new_aspect if new_aspect in ("9:16", "1:1", "4:5", "16:9") else req.aspect,
+                images=[im for im in req.images if im.key not in remove],
+            )
+            new_brand = {**brand}
+            cb = (cj.get("brand") or {}).get("colors")
+            if isinstance(cb, dict):
+                new_brand["colors"] = {
+                    **brand.get("colors", {}),
+                    **{k: v for k, v in cb.items() if isinstance(v, str)},
+                }
+            new = parse_model(Composition, _normalise(cj, r2, new_brand))
+            problems = check_composition(new, r2)
+            used = {a for sc in new.scenes for a in sc.content.assets} | {
+                sc.clip_id for sc in new.scenes if sc.clip_id
+            }
+            problems += [f"scene uses removed asset {a}" for a in used & set(remove)]
+        except json.JSONDecodeError as exc:
+            problems = [f"Reply was not valid JSON: {exc}"]
+        except SchemaValidationError as exc:
+            problems = [exc.feedback]
+        except (TypeError, ValueError) as exc:
+            problems = [f"Reply did not have the expected shape: {exc}"]
+        if new is not None and not problems:
+            return new, reply or "Done.", remove, settings
+        if attempt == 0:
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content": "Fix these problems and return the full JSON again:\n- "
+                             + "\n- ".join(problems[:30])})  # fmt: skip
+    raise StoryboardError(
+        "invalid_revision", "Claude's revision broke the rules twice: " + "; ".join(problems[:4])
+    )

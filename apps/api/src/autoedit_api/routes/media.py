@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Query, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
@@ -25,6 +25,7 @@ from ..schemas import (
     ApiError,
     AssetOut,
     BrandKitUpdate,
+    MotionRevise,
     RenderCreate,
     RenderOut,
     SceneRegenerate,
@@ -346,6 +347,92 @@ def regenerate(project_id: str, scene_id: str, body: SceneRegenerate, db: DbSess
     db.commit()
     background.add_task(enqueue, "scene_regen", project_id)
     return {"status": "queued"}
+
+
+@router.post("/v1/projects/{project_id}/revise", status_code=202)
+def revise(project_id: str, body: MotionRevise, db: DbSession, user: CurrentUser,
+           background: BackgroundTasks) -> dict[str, str]:  # fmt: skip
+    """Change the storyboard by prompt: anything, plus new photos, links in the message, more photos."""
+    mp = _plan(db, user, project_id)
+    if mp.status != "ready" or not mp.composition:
+        raise ApiError(409, "not_ready", "The storyboard is not ready yet")
+    if mp.pending:
+        raise ApiError(409, "busy", "Another change is being applied. Wait a moment.")
+    if not body.message.strip() and not body.asset_ids:
+        raise ApiError(422, "empty", "Say what you would like to change, or add photos.")
+    if not ai_available():
+        raise ApiError(409, "ai_unavailable", "Changes by prompt need ANTHROPIC_API_KEY on the server")
+    for aid in body.asset_ids:
+        a = db.get(Asset, aid)
+        if a is None or a.user_id != user.id:
+            raise ApiError(404, "asset_not_found", "One of the files was not found. Add it again.")
+    mp.pending = {"kind": "revise", "message": body.message.strip(), "asset_ids": body.asset_ids,
+                  "at": datetime.now(UTC).isoformat()}  # fmt: skip
+    mp.error_code = mp.error = None
+    db.commit()
+    background.add_task(enqueue, "motion_revise", project_id)
+    return {"status": "queued"}
+
+
+@router.post("/v1/projects/{project_id}/more-photos", status_code=202)
+def more_photos(
+    project_id: str, db: DbSession, user: CurrentUser, background: BackgroundTasks
+) -> dict[str, str]:
+    """Look through the project's websites again (more pages) for photos not used yet. No AI cost."""
+    mp = _plan(db, user, project_id)
+    if mp.pending or mp.status in ("queued", "planning"):
+        raise ApiError(409, "busy", "Another change is being applied. Wait a moment.")
+    if not (mp.brand_kit or {}).get("sources"):
+        raise ApiError(
+            409, "no_links", "This project has no website links. Paste a link in a change request."
+        )
+    mp.pending = {"kind": "photos", "message": "", "at": datetime.now(UTC).isoformat()}
+    db.commit()
+    background.add_task(enqueue, "motion_revise", project_id)
+    return {"status": "queued"}
+
+
+@router.delete("/v1/projects/{project_id}/assets/{asset_id}")
+def remove_project_asset(project_id: str, asset_id: str, db: DbSession, user: CurrentUser) -> dict[str, Any]:
+    """Take a photo, logo or clip out of the project. Scenes that used it switch to another image or to text."""
+    mp = _plan(db, user, project_id)
+    if mp.pending:
+        raise ApiError(409, "busy", "Another change is being applied. Wait a moment.")
+    a = db.get(Asset, asset_id)
+    if a is None or a.user_id != user.id or a.project_id != project_id:
+        raise ApiError(404, "asset_not_found", "That image is not in this project")
+    a.project_id = None
+    kit = dict(mp.brand_kit or {})
+    kit["images"] = [i for i in kit.get("images", []) if i.get("asset_id") != asset_id]
+    if kit.get("logo_asset") == asset_id:
+        kit["logo_asset"] = None
+    mp.brand_kit = kit
+    if mp.composition:
+        comp = dict(mp.composition)
+        spare = [i["asset_id"] for i in kit["images"] if i.get("kind") in ("photo", "screenshot")]
+        scenes = []
+        for sc in comp.get("scenes", []):
+            sc = dict(sc)
+            content = dict(sc.get("content") or {})
+            if asset_id in (content.get("assets") or []):
+                content["assets"] = [x for x in content["assets"] if x != asset_id] or (
+                    [spare[0]] if spare else []
+                )
+                if not content["assets"] and sc.get("template") in ("product_reveal", "device_mockup"):
+                    sc["template"] = "kinetic_text"
+            if sc.get("template") == "footage" and sc.get("clip_id") == asset_id:
+                sc.update({"template": "kinetic_text", "clip_id": None, "src_in": None, "src_out": None})
+            sc["content"] = content
+            scenes.append(sc)
+        comp["scenes"] = scenes
+        brand = dict(comp.get("brand") or {})
+        if brand.get("logo_asset") == asset_id:
+            brand["logo_asset"] = None
+        comp["brand"] = brand
+        mp.composition = parse_model(Composition, comp).model_dump(by_alias=True, mode="json")
+        mp.version += 1
+    db.commit()
+    return {"removed": asset_id, "version": mp.version}
 
 
 @router.post("/v1/projects/{project_id}/plan/retry", status_code=202)

@@ -98,6 +98,9 @@
     putBrandKit(pid, body) { return this.req("PUT", `/v1/projects/${pid}/brand-kit`, body); }
     regenerate(pid, sid, note) { return this.req("POST", `/v1/projects/${pid}/scenes/${sid}/regenerate`, { note }); }
     retryPlan(pid) { return this.req("POST", `/v1/projects/${pid}/plan/retry`); }
+    revise(pid, message, assetIds) { return this.req("POST", `/v1/projects/${pid}/revise`, { message, asset_ids: assetIds }); }
+    morePhotos(pid) { return this.req("POST", `/v1/projects/${pid}/more-photos`); }
+    removeAsset(pid, aid) { return this.req("DELETE", `/v1/projects/${pid}/assets/${aid}`); }
     uploadImage(file, kind) {
       const fd = new FormData();
       fd.append("file", file);
@@ -1057,12 +1060,86 @@
       ${shown && !rendering && !state.ui.showOptions ? resultPanel(p, shown) : ""}
       ${m.error && !m.pending_scene ? `<div class="errbox"><span>${esc(m.error)}</span></div>` : ""}
       ${brandKitPanel(p)}
+      ${changesPanel(p)}
       ${storyboardPanel(p)}
       ${!rendering ? motionRenderPanel(p) : ""}
       ${state.sb?.dirty ? `<div class="savebar"><span>You have unsaved storyboard changes</span><span class="row"><button type="button" class="btn small ghost" style="color:inherit" data-action="discard-sb">Discard</button><button type="button" class="btn small" data-action="save-sb">Save changes</button></span></div>` : ""}`;
   }
 
   function assetById(p, id) { return p.motion.assets.find((a) => a.id === id); }
+
+  const CHANGE_IDEAS = ["Use more of my photos", "Make the hook punchier", "Make it 30 seconds",
+    "Switch to a luxury look", "Remove the price scene", "Make the voiceover sound Nigerian and warm"];
+
+  function changesPanel(p) {
+    const m = p.motion;
+    const rev = state.ui.rev || (state.ui.rev = { text: "", files: [] });
+    const busy = m.pending_kind === "revise" || m.pending_kind === "photos";
+    const ai = state.catalog.ai_enabled;
+    const history = (m.revisions || []).slice(-8).map((r) => `
+      <div class="bubble me">${esc(r.message)}</div>
+      <div class="bubble ai ${r.failed ? "bad" : ""}">${esc(r.reply)}</div>`).join("");
+    return `
+      <section class="panel" aria-label="Ask for changes">
+        <div class="panel-head"><h2>Ask for changes</h2><span class="sub">Tell Claude anything: links to read, photos to use or drop, wording, length, style, voiceover, scenes to add or remove</span></div>
+        <div class="panel-body">
+          ${history ? `<div class="chatlog">${history}</div>` : ""}
+          ${busy ? `<div class="banner"><span class="spin"></span><span>${esc(p.stage || "Applying your changes")}…</span></div>` : ""}
+          <textarea id="rev-text" rows="3" maxlength="2000" placeholder="e.g. Add photos from https://instagram-shop.example, drop the car photo, and make the ending stronger" ${busy ? "disabled" : ""}
+            style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);padding:12px;font:inherit;resize:vertical">${esc(rev.text)}</textarea>
+          ${rev.files.length ? `<div class="row">${rev.files.map((f) => `<span class="chip ${f.status === "error" ? "err" : ""}">${f.status === "uploading" ? '<span class="spin"></span>' : icon.check} ${esc(f.name)}
+            <button type="button" class="btn icon ghost" data-revrm="${f.key}" aria-label="Remove">×</button></span>`).join("")}</div>` : ""}
+          <div class="row">
+            <button type="button" class="btn small" data-action="rev-attach" ${busy ? "disabled" : ""}>${icon.plus} Attach photos or clips</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn primary" data-action="rev-send" ${busy || !ai ? "disabled" : ""}>${icon.wand} Apply changes</button>
+          </div>
+          ${!ai ? `<span class="note">Changes by prompt need the Anthropic key on the server. You can still edit scenes below and remove photos above.</span>` : ""}
+          <div class="examples" style="padding:0">${CHANGE_IDEAS.map((t) => `<button type="button" class="example" data-revidea="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+        </div>
+      </section>`;
+  }
+
+  async function sendRevision() {
+    const p = state.project;
+    const rev = state.ui.rev || { text: "", files: [] };
+    const text = ($("#rev-text")?.value || rev.text || "").trim();
+    if (rev.files.some((f) => f.status === "uploading")) { toast("Wait for the files to finish uploading", true); return; }
+    const ids = rev.files.filter((f) => f.status === "ready").map((f) => f.asset.id);
+    if (!text && !ids.length) { toast("Say what you would like to change", true); return; }
+    if (state.sb?.dirty) { toast("Save or discard your storyboard edits first", true); return; }
+    try {
+      await api.revise(p.id, text, ids);
+      state.ui.rev = { text: "", files: [] };
+      applySnapshot(await api.getProject(p.id));
+      startWatch(p.id);
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function pickRevisionFiles() {
+    let fi = $("#rev-input");
+    if (!fi) {
+      fi = document.createElement("input"); fi.type = "file"; fi.id = "rev-input"; fi.multiple = true; fi.hidden = true;
+      fi.accept = "image/*,video/mp4,video/quicktime,video/webm,.heic,.heif,.mp4,.mov,.m4v,.webm";
+      document.body.appendChild(fi);
+    }
+    fi.click();
+  }
+
+  async function addRevisionFiles(files) {
+    const rev = state.ui.rev || (state.ui.rev = { text: "", files: [] });
+    rev.text = $("#rev-text")?.value || rev.text;
+    for (const file of files) {
+      const video = VIDEO_EXT.includes(extOf(file.name)) || ["m4v"].includes(extOf(file.name).slice(1));
+      if (!video && !IMAGE_EXT.includes(extOf(file.name))) { toast(`${file.name} isn't a photo or video`, true); continue; }
+      const f = { key: `r${++keySeq}`, name: file.name, status: "uploading" };
+      rev.files.push(f);
+      renderProject();
+      try { f.asset = await api.uploadImage(file, video ? "video" : "photo"); f.status = "ready"; }
+      catch (e) { f.status = "error"; toast(e.message, true); }
+      renderProject();
+    }
+  }
 
   function brandKitPanel(p) {
     const kit = p.motion.brand_kit || {};
@@ -1081,6 +1158,12 @@
             ${logos.length ? `<div class="field2">Logo<div class="logo-pick">${logos.map((a) => `<button type="button" data-bk-logo="${a.id}" aria-pressed="${logoId === a.id}" style="background-image:url(${esc(a.url)})" title="${esc(a.source)}"></button>`).join("")}
               <button type="button" data-bk-logo="" aria-pressed="${!logoId}" style="background:var(--surface-2);font-size:11px;color:var(--muted)">Name only</button></div></div>` : ""}
           </div>
+          <div class="field2">Photos and clips in this video <span class="note">Remove anything you don't want used</span>
+            <div class="asset-grid">${p.motion.assets.map((a) => `<div class="asset-tile" title="${esc(a.source || a.filename || "")}">
+                <span class="pic" style="background-image:url(${esc(a.url)})"></span><span class="kind">${a.kind === "video" ? "Clip" : a.kind === "logo" ? "Logo" : a.kind === "screenshot" ? "Screen" : "Photo"}</span>
+                <button type="button" class="x" data-rmasset="${a.id}" aria-label="Remove from this video" ${p.motion.pending_kind ? "disabled" : ""}>×</button></div>`).join("") || `<span class="note">No photos yet.</span>`}</div>
+            <div class="row">${kit.sources?.length ? `<button type="button" class="btn small" data-action="more-photos" ${p.motion.pending_kind ? "disabled" : ""}>${icon.plus} Get more photos from my links</button>` : ""}
+              <span class="note">Or paste a link or attach photos in "Ask for changes" below.</span></div></div>
         </div>
       </section>`;
   }
@@ -1526,6 +1609,21 @@
       return;
     }
     if (d.action === "save-template") return saveTemplate();
+    if (d.action === "rev-send") return sendRevision();
+    if (d.action === "rev-attach") return pickRevisionFiles();
+    if (d.revidea) { const ta = $("#rev-text"); if (ta) { ta.value = ta.value ? `${ta.value.trim()} ${d.revidea}.` : `${d.revidea}.`; (state.ui.rev ||= { text: "", files: [] }).text = ta.value; ta.focus(); } return; }
+    if (d.revrm) { state.ui.rev.files = state.ui.rev.files.filter((f) => f.key !== d.revrm); return renderProject(); }
+    if (d.action === "more-photos") {
+      try { await api.morePhotos(state.project.id); applySnapshot(await api.getProject(state.project.id)); startWatch(state.project.id); toast("Looking for more photos…"); }
+      catch (e) { toast(e.message, true); }
+      return;
+    }
+    if (d.rmasset) {
+      if (state.sb?.dirty) { toast("Save or discard your storyboard edits first", true); return; }
+      try { await api.removeAsset(state.project.id, d.rmasset); state.sb = null; applySnapshot(await api.getProject(state.project.id)); toast("Removed from this video"); }
+      catch (e) { toast(e.message, true); }
+      return;
+    }
     if (d.action === "music-pick") { state.musicTarget = "project"; return pickMusic(); }
     if (d.action === "dmusic-pick") { state.musicTarget = "draft"; return pickMusic(); }
     if (d.action === "dmusic-clear") { state.draft.motion.music = null; return rerenderComposer(); }
@@ -1692,6 +1790,7 @@
       if (ln) { ln.text = el.value; return markDirty(); }
     }
     if (el.id === "r-prompt") { state.ui.renderOpts.prompt = el.value; return; }
+    if (el.id === "rev-text") { (state.ui.rev ||= { text: "", files: [] }).text = el.value; return; }
     if (el.id === "opt-vostyle") { state.draft.motion.voice_style = el.value; return; }
     if (el.dataset.pcolor) { const lab = el.closest("label")?.querySelector(".mono"); if (lab) lab.textContent = el.value; }
   });
@@ -1719,6 +1818,7 @@
     if (el.id === "r-caps") { state.ui.renderOpts.captions = el.value; return; }
     if (el.id === "r-capstyle") { state.ui.renderOpts.caption_style = el.value; return; }
     if (el.id === "music-input") { const f = el.files[0]; el.value = ""; if (f) uploadMusic(f); return; }
+    if (el.id === "rev-input") { const files = [...el.files]; el.value = ""; addRevisionFiles(files); return; }
     if (state.ui.planEdit) {
       if (el.id === "pc-preset") { state.ui.planEdit.color.preset = el.value; return planChanged(); }
       if (el.dataset.pcolor) { state.ui.planEdit.color[el.dataset.pcolor] = Number(el.value); return planChanged(); }

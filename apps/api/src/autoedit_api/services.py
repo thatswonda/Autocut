@@ -224,7 +224,11 @@ def project_status(project: Project) -> tuple[str, str | None, float]:
         if mp.status in ("queued", "planning"):
             return "planning", mp.stage or "queued", round(mp.progress, 4)
         if mp.pending:
-            return "planning", "Rewriting a scene", 0.5
+            kind = mp.pending.get("kind")
+            label = {"revise": "Applying your changes", "photos": "Finding more photos"}.get(
+                str(kind), "Rewriting a scene"
+            )
+            return "planning", mp.stage or label, 0.5
         if mp.status == "failed":
             return "failed", None, 1.0
         if latest is not None and latest.status == "ready":
@@ -279,6 +283,8 @@ def motion_out(db: Session, project: Project) -> MotionOut | None:
         stage=mp.stage, progress=round(mp.progress, 4), error_code=mp.error_code, error=mp.error,
         brand_kit=mp.brand_kit, composition=mp.composition, version=mp.version,
         pending_scene=(mp.pending or {}).get("scene_id"), cost_usd=mp.cost_usd or 0.0,
+        pending_kind=(mp.pending or {}).get("kind") or ("scene" if mp.pending else None),
+        revisions=list((mp.brand_kit or {}).get("revisions", [])),
         assets=[asset_out(a) for a in assets],
     )  # fmt: skip
 

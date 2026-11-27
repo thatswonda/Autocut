@@ -168,6 +168,13 @@ class MotionOut(BaseModel):
     pending_scene: str | None
     cost_usd: float
     assets: list[AssetOut]
+    pending_kind: str | None = None
+    revisions: list[dict[str, Any]] = []
+
+
+class MotionRevise(_In):
+    message: str = Field(default="", max_length=2000)
+    asset_ids: list[str] = Field(default_factory=list, max_length=12)
 
 
 class RenderOut(BaseModel):

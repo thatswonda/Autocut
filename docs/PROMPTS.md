@@ -6,6 +6,7 @@ PRD §10: every Claude prompt lives in a versioned file, never inline in code.
 |---|---|---|---|
 | Edit plan | `packages/render/src/autoedit_render/prompts/edit.v2.md` (v1 kept) | Edit video: plan the cut from frames, transcript, analysis and the user's instructions | An `EditPlan` (segments with reasons, removed parts, grade, captions, caption fixes) |
 | Storyboard | `packages/motion/src/autoedit_motion/prompts/storyboard.v2.md` (v1 kept) | Motion graphics: first plan, incl. footage scenes and the voiceover script | A full `Composition` |
+| Revision | `packages/motion/src/autoedit_motion/prompts/revise.v1.md` | Motion graphics: "Ask for changes" (whole storyboard, assets to drop, sound settings) | `{reply, remove_assets, settings, composition}` |
 | Scene rewrite | `packages/motion/src/autoedit_motion/prompts/scene.v1.md` | Motion graphics: "change this scene", and the layout self-review | One `Scene` |
 
 Settings: model from `CLAUDE_MODEL_SMART`, effort from `CLAUDE_EFFORT` (default `medium`), server-side model

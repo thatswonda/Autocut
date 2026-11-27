@@ -28,6 +28,7 @@ JOBS: dict[str, str] = {
     "motion_plan": "autoedit_api.jobs_media:motion_plan_job",
     "scene_regen": "autoedit_api.jobs_media:scene_regen_job",
     "render": "autoedit_api.jobs_media:render_job",
+    "motion_revise": "autoedit_api.jobs_media:motion_revise_job",
 }
 
 

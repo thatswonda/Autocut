@@ -24,6 +24,29 @@ class FakeClaude:
                          for b in m["content"] if b.get("type") == "text")  # fmt: skip
         if text.startswith("# Edit request") or "\n# Edit request" in text:
             return self._edit_plan(text), []
+        if "# Revision request" in text:
+            current = json.loads(re.search(r"# Current storyboard\n(\{.*\})", text).group(1))  # type: ignore[union-attr]
+            ask = text.split("# Revision request\n", 1)[1].split("\n")[0]
+            current["scenes"][0]["content"]["headline"] = "Revised hook"
+            for k in ("kicker", "subtext"):
+                current["scenes"][0]["content"].pop(k, None)
+            m = re.search(r"(\d+) seconds", ask)
+            if m:
+                current["meta"]["duration_s"] = float(m.group(1))
+            remove = re.findall(r"remove (ast_[a-z0-9]+)", ask)
+            for sc in current["scenes"]:
+                if set(sc["content"].get("assets", [])) & set(remove):
+                    sc["template"], sc["content"]["assets"] = "kinetic_text", []
+            return json.dumps(
+                {
+                    "reply": f"Changed the hook as asked: {ask[:60]}",
+                    "remove_assets": remove,
+                    "settings": {"voice_direction": "warm Nigerian English accent"}
+                    if "nigerian" in ask.lower()
+                    else {},
+                    "composition": current,
+                }
+            ), []
         assets = re.findall(r"Asset id `([^`]+)` \((\w+)", text)
         photo = next((a for a, k in assets if k == "photo"), None)
         if "Scene to change:" in text:

@@ -352,7 +352,8 @@ def unfinished_jobs() -> list[tuple[str, str]]:
             jobs.append(("motion_plan", mp.project_id))
         for mp in db.scalars(select(MotionPlan).where(MotionPlan.status == "ready")).all():
             if mp.pending:
-                jobs.append(("scene_regen", mp.project_id))
+                kind = "motion_revise" if mp.pending.get("kind") in ("revise", "photos") else "scene_regen"
+                jobs.append((kind, mp.project_id))
         for r in db.scalars(select(Render).where(Render.status.in_(("queued", "processing")))).all():
             r.status, r.stage, r.progress = "queued", None, 0.0
             jobs.append(("render", r.id))

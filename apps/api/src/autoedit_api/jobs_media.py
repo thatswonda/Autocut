@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from autoedit_brand.kit import ImageAsset, build_kit
 from autoedit_brand.palette import prepare_image
@@ -21,6 +24,7 @@ from autoedit_motion.storyboard import (
     ai_available,
     generate_composition,
     regenerate_scene,
+    revise_composition,
 )
 from autoedit_motion.styles import get_style
 from autoedit_schemas import Composition, Signals, parse_model
@@ -306,6 +310,214 @@ def scene_regen_job(project_id: str) -> str:
     finally:
         db.close()
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+# ------------------------------------------------------------------------------ motion revisions
+
+_URL_RE = re.compile(r"\b((?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s,;]*)?)", re.I)
+_MORE_PHOTOS_RE = re.compile(
+    r"\b(more|extra|additional|other|new|different|better)\s+(photos?|pictures?|images?|pics?|shots?)\b", re.I
+)
+
+
+def _links_in(text: str) -> list[str]:
+    out = []
+    for m in _URL_RE.findall(text or ""):
+        u = m if m.lower().startswith(("http://", "https://")) else f"https://{m}"
+        if "." in u.split("//", 1)[1].split("/", 1)[0]:
+            out.append(u.rstrip(".)"))
+    return list(dict.fromkeys(out))[:5]
+
+
+def _store_kit_images(
+    db: Any, storage: Storage, project: Project, kit: Any, *, skip_sizes: set[tuple[int, int, int]]
+) -> list[dict[str, Any]]:
+    """Save a fetched kit's images as project assets, skipping ones already in the project."""
+    entries = []
+    for im in kit.images:
+        sig = (im.width, im.height, len(im.data))
+        if sig in skip_sizes:
+            continue
+        skip_sizes.add(sig)
+        aid = new_id("ast")
+        ctype = "image/png" if im.ext == ".png" else "image/jpeg"
+        key = f"{project_prefix(project.user_id, project.id)}assets/{aid}{im.ext}"
+        storage.put_bytes(key, im.data, ctype)
+        db.add(Asset(id=aid, user_id=project.user_id, project_id=project.id, kind=im.kind,
+                     filename=f"{im.kind}{im.ext}", content_type=ctype, storage_key=key, size_bytes=len(im.data),
+                     width=im.width, height=im.height, source=im.source))  # fmt: skip
+        entries.append({"asset_id": aid, "kind": im.kind, "source": im.source})
+    return entries
+
+
+def motion_revise_job(project_id: str) -> str:
+    """Apply a change request: new photos and links, more photos from the sites, then Claude's revision."""
+    storage = get_storage()
+    workdir = _workdir(f"revise-{project_id}-")
+    db = session_scope()
+    usage = Usage()
+    pending: dict[str, Any] = {}
+    try:
+        project = db.get(Project, project_id)
+        mp = db.get(MotionPlan, project_id)
+        if (
+            project is None
+            or mp is None
+            or not mp.pending
+            or mp.pending.get("kind") not in ("revise", "photos")
+        ):
+            return "nothing"
+        pending = dict(mp.pending)
+        message = str(pending.get("message") or "")
+        kit = dict(mp.brand_kit or {})
+        kit_images = list(kit.get("images") or [])
+        notes: list[str] = []
+        existing = db.scalars(select(Asset).where(Asset.project_id == project.id)).all()
+        sizes = {(a.width or 0, a.height or 0, a.size_bytes or 0) for a in existing}
+
+        # 1. Photos and clips attached to the request.
+        new_ids = [str(a) for a in pending.get("asset_ids") or []]
+        attached = db.scalars(
+            select(Asset).where(Asset.id.in_(new_ids), Asset.user_id == project.user_id)
+        ).all()
+        for a in attached:
+            a.project_id = project.id
+            if a.kind != "video":
+                kit_images.append(
+                    {"asset_id": a.id, "kind": a.kind, "source": a.source or f"file:{a.filename}"}
+                )
+        if attached:
+            notes.append(
+                f"The user attached {len(attached)} new file(s): "
+                + ", ".join(f"{a.id} ({a.kind})" for a in attached)
+            )
+
+        # 2. Links in the message: read them like the first time.
+        sources = [list(x) for x in (mp.sources_text or {}).get("items", [])]
+        links = _links_in(message)
+        if links:
+            _set_plan(project_id, stage="Reading your links")
+            new_kit = build_kit(links, [])
+            entries = _store_kit_images(db, storage, project, new_kit, skip_sizes=sizes)
+            kit_images += entries
+            sources += [[st.source_id, st.as_source_text()] for st in new_kit.sites]
+            kit["sources"] = [
+                *kit.get("sources", []),
+                *({"id": st.source_id, "url": st.url, "title": st.title} for st in new_kit.sites),
+            ]
+            notes.append(f"Read {len(new_kit.sites)} page(s) from the new link(s) and added {len(entries)} image(s): "
+                         + ", ".join(e["asset_id"] for e in entries))  # fmt: skip
+            notes += [f"Link problem: {w}" for w in new_kit.warnings[:3]]
+
+        # 3. More photos from the sites already used.
+        if pending.get("kind") == "photos" or _MORE_PHOTOS_RE.search(message):
+            roots = list(dict.fromkeys(src["url"] for src in kit.get("sources", []) if src.get("url")))[:5]
+            if roots:
+                _set_plan(project_id, stage="Finding more photos")
+                more = build_kit(roots, [], inner_pages=4, photo_total=24)
+                entries = [
+                    e
+                    for e in _store_kit_images(db, storage, project, more, skip_sizes=sizes)
+                    if e["kind"] == "photo"
+                ]
+                kit_images += entries
+                notes.append(
+                    f"Found {len(entries)} more photo(s) on the website(s)"
+                    + (": " + ", ".join(e["asset_id"] for e in entries) if entries else "")
+                )
+            else:
+                notes.append("There are no website links to look for more photos on; the user can paste one.")
+        kit["images"] = kit_images
+        mp.sources_text = {"items": sources}
+        mp.brand_kit = kit
+        db.commit()
+
+        reply = "; ".join(n for n in notes if not n.startswith("The user attached")) or "Done."
+        remove: list[str] = []
+        if pending.get("kind") == "revise" and mp.composition:
+            if not ai_available():
+                raise StoryboardError(
+                    "ai_unavailable", "Changes by prompt need ANTHROPIC_API_KEY on the server."
+                )
+            _set_plan(project_id, stage="Applying your changes")
+            ids = [i["asset_id"] for i in kit_images]
+            ids += [
+                a.id
+                for a in db.scalars(
+                    select(Asset).where(Asset.project_id == project.id, Asset.kind == "video")
+                ).all()
+            ]
+            images = db.scalars(select(Asset).where(Asset.id.in_(ids))).all()
+            req = _storyboard_request(project, mp, list(images), workdir, storage)
+            comp = parse_model(Composition, mp.composition)
+            new_comp, reply, remove, sound = revise_composition(comp, message, req, usage=usage, notes=notes)
+            if remove:
+                for a in db.scalars(
+                    select(Asset).where(Asset.id.in_(remove), Asset.project_id == project.id)
+                ).all():
+                    a.project_id = None
+                kit["images"] = [i for i in kit_images if i["asset_id"] not in set(remove)]
+                if kit.get("logo_asset") in remove:
+                    kit["logo_asset"] = None
+            mp.composition = new_comp.model_dump(by_alias=True, mode="json")
+            opts = dict(project.options or {})
+            opts.update(
+                {
+                    "duration_s": new_comp.meta.duration_s,
+                    "style": new_comp.meta.style,
+                    "aspect": new_comp.meta.aspect,
+                    **sound,
+                }
+            )
+            project.options = opts
+            mp.version += 1
+        log_entry = {
+            "at": datetime.now(UTC).isoformat(),
+            "message": message or "Find more photos",
+            "reply": reply,
+        }
+        kit["revisions"] = [*kit.get("revisions", []), log_entry][-30:]
+        mp.brand_kit = {**kit}
+        flag_modified(mp, "brand_kit")  # kit was shared with the earlier commit; force the update
+        mp.pending, mp.stage = None, None
+        mp.error_code = mp.error = None
+        mp.cost_usd = round((mp.cost_usd or 0) + usage.cost_usd, 4)
+        if usage.calls:
+            db.add(UsageEvent(user_id=project.user_id, project_id=project.id, stage="revision", cost_usd=usage.cost_usd,
+                              details={"model": usage.model, "calls": usage.calls}))  # fmt: skip
+        db.commit()
+        return "ready"
+    except StoryboardError as exc:
+        db.rollback()
+        _revision_failed(project_id, pending, str(exc), exc.code)
+        _record_cost(project_id, usage, "revision")
+        return "failed"
+    except Exception as exc:
+        db.rollback()
+        log.exception("revision failed for %s", project_id)
+        _revision_failed(project_id, pending, f"The change could not be applied ({type(exc).__name__}). Try again.",
+                         "internal_error")  # fmt: skip
+        return "failed"
+    finally:
+        db.close()
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _revision_failed(project_id: str, pending: dict[str, Any], error: str, code: str) -> None:
+    db = session_scope()
+    try:
+        mp = db.get(MotionPlan, project_id)
+        if mp is None:
+            return
+        kit = dict(mp.brand_kit or {})
+        entry = {"at": datetime.now(UTC).isoformat(), "message": str(pending.get("message") or "Find more photos"),
+                 "reply": f"I couldn't apply that: {error}", "failed": True}  # fmt: skip
+        kit["revisions"] = [*kit.get("revisions", []), entry][-30:]
+        mp.brand_kit = kit
+        mp.pending, mp.stage, mp.error_code, mp.error = None, None, code, error
+        db.commit()
+    finally:
+        db.close()
 
 
 # -------------------------------------------------------------------------------------- render

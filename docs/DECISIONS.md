@@ -103,6 +103,14 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-608 | **Brand intake reads every link plus up to two key inner pages per site** (about, products, pricing...), shares the photo quota across sites, accepts pasted lists of links and adds a link left in the box on send; uploads accept HEIC/HEIF/AVIF/GIF/BMP/TIFF. | Owner's second link was not used and iPhone photos could not be picked. |
 | D-609 | **`AUTOEDIT_RENDER_THREADS`** (1 on Starter, 2 on Standard): 1080p edit render peaks ~350 MB with 1 thread, ~390 MB with 2 (about twice as fast). | Keeps 1080p within 512 MB on Starter. |
 
+## Changing a storyboard by prompt
+
+| # | Decision | Why |
+|---|---|---|
+| D-701 | **"Ask for changes" on motion projects:** a free-text request (plus attached photos or clips) revises the whole storyboard. The server first does the mechanical parts (attach files, read links found in the message, look for more photos on the project's sites when asked), then one Claude call returns the full revised storyboard, a short reply, assets to drop and sound settings (voice direction, voiceover, music mood, sound effects). The result is validated like a new storyboard, with one corrective retry. Duration, style and aspect may change when asked. | Owner wants to keep shaping the video after the first storyboard: more photos from a link, remove some, "or just anything". |
+| D-702 | **Direct actions without AI cost:** remove any photo, logo or clip with an × (scenes that used it fall back to another image or to text); "Get more photos from my links" re-reads the sites (4 inner pages, up to 24 images) and skips duplicates. | Simple changes should be instant and free. |
+| D-703 | The conversation (request and reply) is kept with the project (last 30) and shown as a chat. Failures are shown in the same place with the reason. | The user sees what was asked and what changed. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |
