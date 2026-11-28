@@ -161,7 +161,7 @@ def analyze_clip(
     else:
         prog.stage("proxy")
         if not (use_cache and proxy_path.is_file()):
-            make_proxy(source, proxy_path, info)
+            make_proxy(source, proxy_path, info, progress=lambda f: prog.stage("proxy", f))
         prog.finish("proxy")
 
         prog.stage("signals")

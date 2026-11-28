@@ -33,40 +33,64 @@ def _run(cmd: list[str], what: str) -> None:
 
 
 def motion_cues(comp: object) -> list[tuple[float, str, float]]:
-    """Sound effects timed to the composition's animation: (time, kind, volume dB)."""
+    """Sound effects timed to the composition's animation: (time, kind, volume dB). Dense and clearly
+    audible, like product and explainer videos: a hit on the open, a whoosh on every scene change, pops as
+    words and items land, ticks for counters, an impact on prices, a riser and a ding at the end."""
     from autoedit_schemas import Composition
 
     assert isinstance(comp, Composition)
     scenes = sorted(comp.scenes, key=lambda s: s.t_in)
-    cues: list[tuple[float, str, float]] = [(0.05, "impact", -15.0)]
+    cues: list[tuple[float, str, float]] = [(0.03, "impact", -7.0)]
     for i, sc in enumerate(scenes):
         k = min(1.0, (sc.t_out - sc.t_in) / 3.0)
         t0 = sc.t_in
         tpl = sc.template
+        if i and sc.content.headline:
+            cues.append((t0 + 0.14 * k, "swipe", -13.0))
         if tpl == "product_reveal":
-            cues.append((t0 + 0.05, "swoosh", -15.0))
+            cues.append((t0 + 0.08, "swoosh", -9.0))
         elif tpl == "price_offer":
-            cues.append((t0 + 0.4 * k + 0.12, "impact", -10.0))
+            cues.append((t0 + 0.4 * k + 0.12, "impact", -5.0))
         elif tpl == "feature_list":
             cues += [
-                (t0 + 0.55 * k + j * 0.22 * max(k, 0.6), "pop", -17.0)
+                (t0 + 0.55 * k + j * 0.22 * max(k, 0.6), "pop", -10.0)
                 for j in range(len(sc.content.items[:5]))
             ]
         elif tpl == "stats_counter":
-            cues += [(t0 + 0.3 * k + j * 0.2, "click", -15.0) for j in range(len(sc.content.stats[:3]))]
+            cues += [(t0 + 0.3 * k + j * 0.2, "click", -9.0) for j in range(len(sc.content.stats[:3]))]
+            cues.append((t0 + 0.35 + 1.4, "ding", -14.0))
         elif tpl == "logo_sting":
-            cues.append((t0 + 0.15, "boom", -10.0))
+            cues.append((t0 + 0.15, "boom", -6.0))
+        elif tpl in ("device_mockup", "phone_pair"):
+            cues.append((t0 + 0.05, "swoosh", -10.0))
+        elif tpl == "stat_card":
+            cues += [(t0 + 0.1, "swoosh", -11.0), (t0 + 0.45, "riser", -16.0), (t0 + 2.05, "ding", -11.0)]
+        elif tpl == "bar_chart":
+            cues += [(t0 + 0.5 + j * 0.18, "pop", -10.0) for j in range(len(sc.content.stats[:4]))]
+        elif tpl == "screen_focus":
+            d = sc.t_out - t0
+            zoom_at = t0 + min(1.0, d * 0.25)
+            cues += [(t0 + 0.1, "swoosh", -11.0), (zoom_at, "whoosh", -10.0),
+                     (zoom_at + min(2.2, max(1.0, d * 0.45)) * 0.75, "click", -8.0)]  # fmt: skip
+        elif tpl == "steps":
+            n = max(1, len(sc.content.items[:7]))
+            sd = max(0.6, (sc.t_out - t0 - 1.0) / n)
+            cues += [(t0 + 0.5 + j * sd, "swipe", -12.0) for j in range(n)]
         elif tpl == "cta_end_card":
             if t0 > 1.6:
-                cues.append((t0 - 1.5, "riser", -18.0))
-            cues.append((t0 + 0.55 * k + 0.1, "ding", -13.0))
-        tr = sc.transition_out
-        if i < len(scenes) - 1 and tr.type != "cut" and tr.duration_s > 0:
-            d = max(tr.duration_s, 0.35)
-            kind = {"wipe": "swoosh", "zoom": "whoosh", "slide": "swipe", "fade": ""}.get(tr.type, "")
-            if kind:
+                cues.append((t0 - 1.5, "riser", -11.0))
+            cues.append((t0 + 0.55 * k + 0.1, "ding", -8.0))
+        if i < len(scenes) - 1:
+            tr = sc.transition_out
+            if tr.type != "cut" and tr.duration_s > 0:
+                d = max(tr.duration_s, 0.35)
+                kind = {"wipe": "swoosh", "zoom": "whoosh", "slide": "swipe", "fade": "whoosh"}.get(
+                    tr.type, "whoosh"
+                )
                 lead = 0.45 if kind == "whoosh" else 0.25
-                cues.append((max(0.0, sc.t_out - d * 0.5 - lead), kind, -11.0))
+                cues.append((max(0.0, sc.t_out - d * 0.5 - lead), kind, -6.0))
+            else:
+                cues.append((max(0.0, sc.t_out - 0.3), "whoosh", -9.0))
     return sorted((round(t, 3), k, v) for t, k, v in cues if t < comp.meta.duration_s - 0.1)
 
 
@@ -149,9 +173,9 @@ def mix(video: Path, out: Path, *, workdir: Path, total_s: float, lines: list[Li
             labels.append(f"[x{j}]")
         graph.append(f"[mixed]{''.join(labels)}amix=inputs={len(labels) + 1}:duration=first:dropout_transition=0:"
                      "normalize=0[mixed_fx]")  # fmt: skip
-        graph.append("[mixed_fx]loudnorm=I=-14:TP=-1.5:LRA=11[a]")
+        graph.append("[mixed_fx]loudnorm=I=-13:TP=-1.2:LRA=9[a]")
     else:
-        graph.append("[mixed]loudnorm=I=-14:TP=-1.5:LRA=11[a]")
+        graph.append("[mixed]loudnorm=I=-13:TP=-1.2:LRA=9[a]")
     audio = workdir / "motion_audio.m4a"
     _run([FFMPEG, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *inputs, "-filter_complex", ";".join(graph),
           "-map", "[a]", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-t", f"{total_s:.3f}", str(audio)],

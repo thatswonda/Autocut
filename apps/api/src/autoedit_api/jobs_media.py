@@ -90,7 +90,7 @@ def _storyboard_request(project: Project, mp: MotionPlan, image_assets: list[Ass
         brand_name=kit.get("name", ""),
         sources=sources,
         images=images,
-        voiceover=bool(opts.get("voiceover")),
+        voiceover=opts.get("voiceover", True) is not False,
         music=bool(opts.get("music_asset_id")),
     )
 
@@ -578,6 +578,7 @@ def render_job(render_id: str) -> str:
             if not clips:
                 raise RuntimeError("no analyzed clips")
             files: dict[str, Path] = {}
+            previews: dict[str, Path] = {}
             sigs: dict[str, Signals] = {}
             for c in clips:
                 art = next((a for a in c.artifacts if a.kind == "signals"), None)
@@ -587,6 +588,9 @@ def render_job(render_id: str) -> str:
                 files[c.id] = _local(
                     storage, c.upload.storage_key, workdir, f"{c.id}{Path(c.upload.storage_key).suffix}"
                 )
+                prev = next((a for a in c.artifacts if a.kind == "proxy"), None)
+                if prev is not None:
+                    previews[c.id] = _local(storage, prev.storage_key, workdir, f"{c.id}.proxy.mp4")
             from .jobs_edit import plan_edit
 
             edl, report = plan_edit(db, storage, project=project, clips=clips, files=files, sigs=sigs,
@@ -602,7 +606,7 @@ def render_job(render_id: str) -> str:
                 if ma is not None and ma.user_id == project.user_id:
                     music = _local(storage, ma.storage_key, workdir, f"music{Path(ma.storage_key).suffix}")
             result = render_edl(edl, files, sigs, out, workdir=workdir / "edit", short_edge=short_edge,
-                                intro=intro, outro=outro, music=music,
+                                intro=intro, outro=outro, music=music, previews=previews,
                                 progress=lambda f: progress(0.3 + f * 0.7, "Cutting, grading and captioning"))  # fmt: skip
             width, height, duration = result.width, result.height, result.duration_s
         else:
@@ -622,44 +626,60 @@ def render_job(render_id: str) -> str:
             db.commit()
             opts = project.options or {}
             music_asset = db.get(Asset, opts["music_asset_id"]) if opts.get("music_asset_id") else None
-            want_vo = comp.voiceover.enabled and bool(comp.voiceover.script)
             music_choice = str(opts.get("music") or "auto")
-            needs_audio = True  # sound effects and music on every motion video (unless turned off)
-            main = workdir / "motion.mp4" if (intro or outro) else out
-            silent = workdir / "motion_silent.mp4" if needs_audio else main
-            res = render_composition(comp, assets, silent, workdir=workdir / "page", short_edge=short_edge,
-                                     progress=lambda f: progress(f * (0.8 if needs_audio or intro or outro else 1),
-                                                                 "Animating"))  # fmt: skip
-            width, height, duration = res.width, res.height, res.duration_s
-            if needs_audio:
-                from autoedit_motion.voice import speak_best
-                from autoedit_render.motion_audio import Line, mix, motion_cues
-                from autoedit_render.music import bed_file, mood_for_style
+            from autoedit_motion.narration import auto_script, fit_to_voice
+            from autoedit_motion.voice import speak_best
+            from autoedit_render.motion_audio import Line, mix, motion_cues
+            from autoedit_render.music import bed_file, mood_for_style
 
-                lines: list[Line] = []
-                if want_vo:
-                    progress(0.82, "Recording the voiceover")
-                    spoken, vo_note = speak_best([(ln.t_in, ln.text) for ln in comp.voiceover.script], workdir / "vo",
+            # 1. Voiceover first (on unless the user turned it off): the script from the storyboard, or one
+            #    written from the scenes' own text; then every scene is stretched to fit what is said over it.
+            lines: list[Line] = []
+            notes: list[str] = []
+            if opts.get("voiceover", True) is not False:
+                script = list(comp.voiceover.script) or auto_script(comp)
+                if script:
+                    progress(0.02, "Recording the voiceover")
+                    spoken, vo_note = speak_best([(ln.t_in, ln.text) for ln in script], workdir / "vo",
                                                  voice=str(opts.get("voice") or "auto"),
                                                  style=str(opts.get("voice_style") or ""))  # fmt: skip
-                    lines = [Line(x.t_in, x.text, x.path, x.duration_s) for x in spoken]
                     if vo_note:
-                        s = {**s, "warnings": [*s.get("warnings", []), vo_note]}
-                music_path: Path | None = None
-                if music_asset is not None and music_asset.user_id == project.user_id:
-                    music_path = _local(storage, music_asset.storage_key, workdir,
-                                        f"music{Path(music_asset.storage_key).suffix}")  # fmt: skip
-                elif music_choice != "none":
-                    mood = mood_for_style(comp.meta.style) if music_choice == "auto" else music_choice
-                    music_path = bed_file(mood, duration)
-                progress(0.88, "Mixing the sound")
-                mix(silent, main, workdir=workdir / "mix", total_s=duration, lines=lines, music=music_path,
-                    music_db=-17.0 if lines else -11.0,
-                    captions=bool(opts.get("voiceover_captions")) and want_vo, caption_style="clean",
-                    width=width, height=height, accent=comp.brand.colors.accent or "#FFD400",
-                    sfx=motion_cues(comp) if opts.get("sfx", True) else [])  # fmt: skip
+                        notes.append(vo_note)
+                    data = comp.model_dump(by_alias=True)
+                    data["voiceover"] = {"enabled": True, "voice": comp.voiceover.voice,
+                                         "script": [{"t_in": ln.t_in, "text": ln.text} for ln in script]}  # fmt: skip
+                    comp, starts = fit_to_voice(
+                        Composition.model_validate(data), [(x.t_in, x.duration_s) for x in spoken]
+                    )
+                    lines = [
+                        Line(t, x.text, x.path, x.duration_s) for t, x in zip(starts, spoken, strict=True)
+                    ]
+                    r.report = comp.model_dump(by_alias=True, mode="json")
+                    db.commit()
+            main = workdir / "motion.mp4" if (intro or outro) else out
+            silent = workdir / "motion_silent.mp4"
+            # 2. Animate.
+            res = render_composition(comp, assets, silent, workdir=workdir / "page", short_edge=short_edge,
+                                     progress=lambda f: progress(0.05 + f * 0.8, "Animating"))  # fmt: skip
+            width, height, duration = res.width, res.height, res.duration_s
+            # 3. Sound: voice, music ducked under it, sound effects on every move.
+            music_path: Path | None = None
+            if music_asset is not None and music_asset.user_id == project.user_id:
+                music_path = _local(storage, music_asset.storage_key, workdir,
+                                    f"music{Path(music_asset.storage_key).suffix}")  # fmt: skip
+            elif music_choice != "none":
+                mood = mood_for_style(comp.meta.style) if music_choice == "auto" else music_choice
+                music_path = bed_file(mood, duration)
+            progress(0.88, "Mixing the sound")
+            mix(silent, main, workdir=workdir / "mix", total_s=duration, lines=lines, music=music_path,
+                music_db=-19.0 if lines else -10.0,
+                captions=bool(opts.get("voiceover_captions")) and bool(lines), caption_style="clean",
+                width=width, height=height, accent=comp.brand.colors.accent or "#FFD400",
+                sfx=motion_cues(comp) if opts.get("sfx", True) is not False else [])  # fmt: skip
+            if notes:
+                s = {**s, "warnings": [*s.get("warnings", []), *notes]}
             if res.warnings:
-                s = {**s, "warnings": res.warnings}
+                s = {**s, "warnings": [*s.get("warnings", []), *res.warnings]}
             if intro or outro:
                 progress(0.9, "Adding intro and outro")
                 pieces = [p for p in (intro, main, outro) if p]

@@ -161,6 +161,18 @@ def auto_correct(src: Path, a: float, b: float, *, strength: float = 0.7) -> str
     return ",".join(parts)
 
 
+_CORRECTIONS: dict[tuple[str, int], str] = {}
+
+
+def _cached_correction(src: Path, a: float, b: float) -> str:
+    """Auto-correct measured once per ~4 s of each source (jump cuts of one shot share it). Measuring on the
+    small preview copy instead of a 4K original saves minutes on slow servers."""
+    key = (str(src), int(((a + b) / 2) // 4))
+    if key not in _CORRECTIONS:
+        _CORRECTIONS[key] = auto_correct(src, a, b)
+    return _CORRECTIONS[key]
+
+
 def adjust_filter(color: Color) -> str:
     """The EDL's fine adjustments (-100..100 each), applied before the look."""
     brightness = color.exposure / 100 * 0.14
@@ -190,7 +202,7 @@ def _atempo(speed: float) -> str:
 def encode_piece(src: Path, out: Path, *, t_in: float | None, t_out: float | None, frames: int, out_w: int,
                  out_h: int, center: tuple[float, float] | None = None, look: str = "none",
                  adjust: Color | None = None, fx: PieceFx | None = None, zoom: float = 1.0, speed: float = 1.0,
-                 correct: bool = True) -> float:  # fmt: skip
+                 correct: bool = True, measure: Path | None = None) -> float:  # fmt: skip
     """Write one intermediate piece with exactly ``frames`` frames; returns its duration."""
     info = probe(src)
     start = t_in or 0.0
@@ -205,7 +217,7 @@ def encode_piece(src: Path, out: Path, *, t_in: float | None, t_out: float | Non
     if move:
         chain += f",{move}"
     if correct:
-        ac = auto_correct(src, start, min(end, start + src_dur))
+        ac = _cached_correction(measure or src, start, min(end, start + src_dur))
         if ac:
             chain += f",{ac}"
     if adjust is not None:
@@ -296,6 +308,7 @@ def render_edl(
     music: Path | None = None,
     accent: str = "#FFD400",
     progress: Callable[[float], None] | None = None,
+    previews: dict[str, Path] | None = None,
 ) -> EditRenderResult:
     t0 = time.perf_counter()
     workdir.mkdir(parents=True, exist_ok=True)
@@ -331,7 +344,7 @@ def render_edl(
         encode_piece(
             clip_files[seg.clip_id], p, t_in=seg.src_in, t_out=seg.src_out, frames=frames, out_w=out_w,
             out_h=out_h, center=_subject_center(sig, seg.src_in, seg.src_out), look=look, adjust=edl.color,
-            fx=fx, zoom=zoom, speed=seg.speed,
+            fx=fx, zoom=zoom, speed=seg.speed, measure=(previews or {}).get(seg.clip_id),
         )  # fmt: skip
         parts.append(p)
         tick()

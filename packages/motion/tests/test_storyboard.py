@@ -91,3 +91,25 @@ def test_pasted_key_is_cleaned_and_bad_keys_are_explained(monkeypatch: pytest.Mo
     assert "start with sk-ant-" in (key_problem() or "")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03 abc")
     assert "one line" in (key_problem() or "")
+
+
+def test_auto_script_and_fit_to_voice() -> None:
+    from autoedit_motion.narration import auto_script, fit_to_voice
+    from autoedit_schemas import Composition
+
+    comp = Composition.model_validate({"meta": {"duration_s": 6}, "scenes": [
+        {"id": "s1", "template": "kinetic_text", "t_in": 0, "t_out": 2, "content": {"headline": "Fresh coffee daily"}},
+        {"id": "s2", "template": "price_offer", "t_in": 2, "t_out": 4, "content": {"headline": "House Blend", "price": "₦4,500"}},
+        {"id": "s3", "template": "cta_end_card", "t_in": 4, "t_out": 6, "content": {"headline": "Order today", "cta": "Shop now"}},
+    ]})  # fmt: skip
+    script = auto_script(comp)
+    assert [ln.text for ln in script] == [
+        "Fresh coffee daily.",
+        "House Blend. Just 4,500 naira.",
+        "Order today. Shop now.",
+    ]
+    fitted, starts = fit_to_voice(comp, [(ln.t_in, d) for ln, d in zip(script, (1.0, 3.5, 1.2), strict=True)])
+    s2 = fitted.scenes[1]
+    assert s2.t_out - s2.t_in >= 3.5 + 0.35 + 0.45 - 1e-6  # stretched to hold its 3.5 s line
+    assert fitted.scenes[0].t_out - fitted.scenes[0].t_in == 2  # never shrinks
+    assert starts[1] == round(s2.t_in + 0.35, 3) and fitted.meta.duration_s == fitted.scenes[-1].t_out

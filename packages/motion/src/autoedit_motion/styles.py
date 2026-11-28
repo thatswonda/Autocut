@@ -40,6 +40,27 @@ STYLES: dict[str, StylePreset] = {
     s.key: s
     for s in [
         StylePreset(
+            key="product_ui",
+            name="Product UI",
+            description="Clean white UI cards on vivid gradients, counters and charts, camera moves. Like modern tech launches.",
+            display_font="Inter",
+            body_font="Inter",
+            display_weight=800,
+            body_weight=500,
+            uppercase_headlines=False,
+            headline_tracking=-0.035,
+            background="gradient",
+            surfaces=("accent", "dark", "light", "dark"),
+            headline_anim="mask_reveal",
+            body_anim="fade_up",
+            item_anim="fade_up",
+            transition="zoom",
+            transition_s=0.5,
+            radius=3.2,
+            easing="cubic-bezier(.16,1,.3,1)",
+            preview_colors=("#b7f34a", "#ffffff", "#0d0f0c"),
+        ),
+        StylePreset(
             key="bold_pop",
             name="Bold Pop",
             description="Big condensed type, punchy pops, color-blocked scenes.",

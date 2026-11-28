@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -186,7 +186,37 @@ def proxy_dimensions(info: MediaInfo, short_edge: int = PROXY_SHORT_EDGE) -> tup
     return max(pw, 2), max(ph, 2)
 
 
-def make_proxy(src: Path, dst: Path, info: MediaInfo, *, timeout: float = 1800.0) -> Path:
+def _run_with_progress(cmd: list[str], *, timeout: float, what: str, duration_s: float,
+                       progress: Callable[[float], None]) -> None:  # fmt: skip
+    """Run FFmpeg reporting progress (0..1) from its ``-progress`` output, so long steps never look stuck."""
+    import time
+
+    full = [*cmd[:1], "-progress", "pipe:1", "-nostats", *cmd[1:]]
+    proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout is not None
+    started = time.monotonic()
+    try:
+        for line in proc.stdout:
+            if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+                try:
+                    done = int(line.split("=", 1)[1]) / 1e6
+                except ValueError:
+                    continue
+                progress(max(0.0, min(0.999, done / max(duration_s, 0.1))))
+            if time.monotonic() - started > timeout:
+                proc.kill()
+                raise MediaError("timeout", f"{what} timed out after {timeout:.0f}s")
+        code = proc.wait(timeout=60)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    if code != 0:
+        tail = (proc.stderr.read() if proc.stderr else "").strip().splitlines()[-6:]
+        raise MediaError(f"{what}_failed", f"{what} failed: " + " | ".join(tail))
+
+
+def make_proxy(src: Path, dst: Path, info: MediaInfo, *, timeout: float = 3600.0,
+               progress: Callable[[float], None] | None = None) -> Path:  # fmt: skip
     """Create a low-res, constant-frame-rate, display-oriented H.264 proxy for analysis and preview.
 
     The original is kept untouched for the final render.
@@ -208,7 +238,10 @@ def make_proxy(src: Path, dst: Path, info: MediaInfo, *, timeout: float = 1800.0
         "-metadata:s:v:0", "rotate=0",
         str(tmp),
     ]  # fmt: skip
-    _run(cmd, timeout=timeout, what="proxy")
+    if progress is not None:
+        _run_with_progress(cmd, timeout=timeout, what="proxy", duration_s=info.duration_s, progress=progress)
+    else:
+        _run(cmd, timeout=timeout, what="proxy")
     tmp.replace(dst)
     return dst
 

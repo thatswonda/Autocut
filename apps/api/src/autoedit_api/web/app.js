@@ -194,6 +194,7 @@
     kinetic_text: "Big statement", product_reveal: "Product reveal", device_mockup: "App on a phone",
     feature_list: "Feature list", stats_counter: "Numbers", testimonial_card: "Testimonial",
     price_offer: "Price / offer", logo_sting: "Logo moment", cta_end_card: "Call to action", footage: "Footage",
+    stat_card: "Big number card", screen_focus: "Screen zoom", steps: "Steps", bar_chart: "Bar chart", phone_pair: "Two phones",
   };
 
   const state = {
@@ -223,7 +224,7 @@
       outroId: null,
       poster: null,
       edit: { aspect: "9:16", color_preset: "auto", target: "" },
-      motion: { aspect: "9:16", duration_s: 20, style: "bold_pop", voiceover: true, voice: "auto", voice_style: "", vo_captions: false, music: null, mood: "auto", sfx: true },
+      motion: { aspect: "9:16", duration_s: 20, style: "product_ui", voiceover: true, voice: "auto", voice_style: "", vo_captions: false, music: null, mood: "auto", sfx: true },
     },
   };
   const limitS = () => state.me?.limits?.max_total_raw_s ?? 1800;
@@ -1180,8 +1181,8 @@
     if (!["logo_sting", "testimonial_card", "cta_end_card"].includes(t)) out.push(f("kicker", "Small line above", c.kicker || "", false, 60));
     out.push(f("headline", t === "testimonial_card" ? "Quote" : t === "logo_sting" ? "Tagline" : "Headline", c.headline || "", t === "testimonial_card", 200));
     if (t === "price_offer") out.push(f("price", "Price", c.price || "", false, 40));
-    if (t === "stats_counter") out.push(f("stats", "Numbers (one per line: value | label)", (c.stats || []).map((s) => `${s.value} | ${s.label}`).join("\n"), true));
-    if (t === "feature_list" || t === "price_offer") out.push(f("items", t === "price_offer" ? "Badges (one per line)" : "Points (one per line)", (c.items || []).join("\n"), true));
+    if (["stats_counter", "stat_card", "bar_chart"].includes(t)) out.push(f("stats", "Numbers (one per line: value | label)", (c.stats || []).map((s) => `${s.value} | ${s.label}`).join("\n"), true));
+    if (t === "feature_list" || t === "price_offer" || t === "steps") out.push(f("items", t === "price_offer" ? "Badges (one per line)" : "Points (one per line)", (c.items || []).join("\n"), true));
     if (t === "cta_end_card") out.push(f("cta", "Button text", c.cta || "", false, 40));
     if (t !== "logo_sting") out.push(f("subtext", t === "testimonial_card" ? "Who said it" : t === "cta_end_card" ? "Website or contact" : "Supporting line", c.subtext || "", false, 500));
     return out.join("");
@@ -1210,7 +1211,7 @@
               <div class="scene-body">
                 <div class="scene-fields">${sceneFieldsHtml(sc, i)}</div>
                 <div class="scene-side">
-                  ${["product_reveal", "device_mockup"].includes(sc.template) ? `<span>Image</span><div class="imgs">${imgs.map((a) => `<button type="button" data-simg="${i}:${a.id}" aria-pressed="${(sc.content.assets || [])[0] === a.id}" style="background-image:url(${esc(a.url)})" title="${esc(a.source)}"></button>`).join("") || "<span>No images. Add photos when you create a project.</span>"}</div>` : ""}
+                  ${["product_reveal", "device_mockup", "screen_focus", "phone_pair"].includes(sc.template) ? `<span>Image</span><div class="imgs">${imgs.map((a) => `<button type="button" data-simg="${i}:${a.id}" aria-pressed="${(sc.content.assets || [])[0] === a.id}" style="background-image:url(${esc(a.url)})" title="${esc(a.source)}"></button>`).join("") || "<span>No images. Add photos when you create a project.</span>"}</div>` : ""}
                   ${sc.template === "footage" ? `<span>Clip</span><div class="imgs">${clips.map((a) => `<button type="button" data-sclip="${i}:${a.id}" aria-pressed="${sc.clip_id === a.id}" style="background-image:url(${esc(a.url)})" title="${esc(a.filename || "")} · ${fmtDur(a.duration_s || 0)}"></button>`).join("")}</div>
                     <span class="note">Plays ${(sc.src_in || 0).toFixed(1)}s – ${(sc.src_out || 0).toFixed(1)}s of the clip</span>` : ""}
                   ${sc.claims?.length ? `<span>Facts and their sources</span><div class="claims">${sc.claims.map((c) => `<span class="claim" title="${esc(c.text)}">${esc(c.source)}</span>`).join("")}</div>` : ""}

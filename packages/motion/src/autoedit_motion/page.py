@@ -282,6 +282,126 @@ class _Builder:
             f"{self.text(sc.id, 'subtext', c.subtext, 4.4, 3)}</div>"
         )
 
+    # ---- product-UI templates (white cards, counters, charts, camera moves) -----------------------
+    def _ui_card_anims(self, sc: Scene, t0: float, sel: str = ".ui-card") -> None:
+        d = sc.t_out - t0
+        self.anim(f"#{sc.id} {sel}", "card_in", t0 + 0.05, 1.0, easing="cubic-bezier(.16,1,.3,1)")
+        self.anim(f"#{sc.id} .card-float", "card_drift", t0, d + 0.2, easing="ease-in-out")
+
+    def _counter_html(self, sid: str, idx: int, value: str, cls: str, start: float, dur: float = 1.6,
+                      max_u: float = 17, min_u: float = 7, maxh: float = 20) -> str:  # fmt: skip
+        vid = f"{sid}-n{idx}"
+        parsed = _counter(value)
+        if parsed:
+            prefix, num, dec, suffix = parsed
+            self.spec.counters.append({"id": vid, "to": num, "dec": dec, "prefix": prefix, "suffix": suffix,
+                                       "start": start, "dur": dur})  # fmt: skip
+        return (f'<div class="{cls} fit" id="{vid}" data-max="{max_u}" data-min="{min_u}" data-maxh="{maxh}" '
+                f'data-label="{sid} {cls}">{_e(value)}</div>')  # fmt: skip
+
+    def tpl_stat_card(self, sc: Scene, t0: float, k: float) -> str:
+        c = sc.content
+        st = c.stats[0] if c.stats else None
+        value = st.value if st else c.price
+        label = st.label if st else c.subtext
+        big = self._counter_html(sc.id, 0, value, "big", t0 + 0.45) if value else ""
+        minis = "".join(
+            f'<div class="mini"><b>{_e(x.value)}</b><span>{_e(x.label)}</span></div>' for x in c.stats[1:3]
+        )
+        self._ui_card_anims(sc, t0)
+        self.anim(f"#{sc.id} .meter i", "bar_grow", t0 + 0.7, 1.4, easing="cubic-bezier(.16,1,.3,1)")
+        self.anim(f"#{sc.id} .mini", "soft_up", t0 + 1.0, 0.7, stagger=0.15)
+        top = self.headline(sc.id, c.headline, 9, 4, maxh=18) if c.headline else ""
+        return (
+            f'{self.kicker(c.kicker if c.headline else "")}{top}<div class="card-float"><div class="ui-card stat">'
+            f'<div class="ui-row"><i class="ui-dot"></i><span>{_e(c.kicker if not c.headline else (label or ""))}</span></div>'
+            f'{big}<div class="lbl" dir="auto">{_e(label if not c.headline else c.subtext)}</div>'
+            f'<div class="meter"><i></i></div>{f"<div class=minis>{minis}</div>" if minis else ""}</div></div>'
+        )
+
+    def tpl_screen_focus(self, sc: Scene, t0: float, k: float) -> str:
+        c = sc.content
+        d = sc.t_out - t0
+        img = self.img(c.assets[0] if c.assets else None, "shot")
+        fx, fy, fw, fh = c.focus if len(c.focus) == 4 else (0.2, 0.15, 0.6, 0.35)
+        zoom_at, zoom_d = t0 + min(1.0, d * 0.25), min(2.2, max(1.0, d * 0.45))
+        self.anim(f"#{sc.id} .browser", "card_in", t0 + 0.05, 1.0, easing="cubic-bezier(.16,1,.3,1)")
+        self.anim(f"#{sc.id} .cam", "focus_cam", zoom_at, zoom_d, easing="cubic-bezier(.65,0,.35,1)")
+        self.anim(f"#{sc.id} .hl", "hl_in", zoom_at + zoom_d * 0.75, 0.6, easing="cubic-bezier(.16,1,.3,1)")
+        self.anim(f"#{sc.id} .chip-label", "soft_up", zoom_at + zoom_d * 0.85, 0.6)
+        label = c.headline or c.kicker
+        return (
+            f'<div class="browser"><div class="chrome"><i></i><i></i><i></i><span class="url">{_e(self.comp.brand.name)}</span></div>'
+            f'<div class="viewport"><div class="cam" data-focus="{fx:.4f},{fy:.4f},{fw:.4f},{fh:.4f}">{img}'
+            f'<i class="hl" style="left:{fx * 100:.2f}%;top:{fy * 100:.2f}%;width:{fw * 100:.2f}%;height:{fh * 100:.2f}%"></i>'
+            f"</div></div></div>{f'<div class=chip-label dir=auto>{_e(label)}</div>' if label else ''}"
+            f"{self.text(sc.id, 'subtext', c.subtext, 4.2, 3)}"
+        )
+
+    def tpl_steps(self, sc: Scene, t0: float, k: float) -> str:
+        c = sc.content
+        items = c.items[:7] or [c.headline]
+        n = len(items)
+        d = sc.t_out - t0
+        sd = max(0.6, (d - 1.0) / n)
+        chips = "".join(
+            f'<div class="step-chip"><span class="num">{i + 1:02d}</span><span class="st" dir="auto">{_e(it)}</span></div>'
+            for i, it in enumerate(items)
+        )
+        self.anim(f"#{sc.id} .steps-track", "steps_track", t0 + 0.5, sd * n, easing="linear")
+        for i in range(n):
+            self.anim(f"#{sc.id} .step-chip:nth-child({i + 1})", "step_final" if i == n - 1 else "step_focus",
+                      t0 + 0.5 + i * sd, sd if i < n - 1 else max(0.6, d - 0.5 - i * sd), easing="cubic-bezier(.16,1,.3,1)")  # fmt: skip
+        return (
+            f"{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 8, 4, maxh=18) if c.items else ''}"
+            f'<div class="steps-view"><div class="steps-track" data-n="{n}">{chips}</div></div>'
+        )
+
+    def tpl_bar_chart(self, sc: Scene, t0: float, k: float) -> str:
+        c = sc.content
+        stats = c.stats[:4]
+        nums = [(_counter(s.value) or ("", 0.0, 0, ""))[1] for s in stats]
+        top = max(nums or [1.0]) or 1.0
+        cols = []
+        for i, (s_, v) in enumerate(zip(stats, nums, strict=True)):
+            pct = max(8.0, 100 * v / top)
+            val = self._counter_html(sc.id, i, s_.value, "val", t0 + 0.5 + i * 0.18, 1.3, 6, 3.4, 8)
+            cols.append(f'<div class="bar-col">{val}<div class="bar-wrap"><i class="bar-fill" style="height:{pct:.1f}%"></i></div>'
+                        f'<div class="bl" dir="auto">{_e(s_.label)}</div></div>')  # fmt: skip
+        self._ui_card_anims(sc, t0)
+        self.anim(
+            f"#{sc.id} .bar-fill", "bar_rise", t0 + 0.5, 1.3, stagger=0.18, easing="cubic-bezier(.16,1,.3,1)"
+        )
+        return (
+            f"{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 8, 4, maxh=18)}"
+            f'<div class="card-float"><div class="ui-card chart"><div class="bars n{len(cols)}">{"".join(cols)}</div></div></div>'
+            f"{self.text(sc.id, 'subtext', c.subtext, 4, 3)}"
+        )
+
+    def tpl_phone_pair(self, sc: Scene, t0: float, k: float) -> str:
+        c = sc.content
+        d = sc.t_out - t0
+        shots = [self.img(a, "screen") for a in c.assets[:2]] or [""]
+        phones = "".join(
+            f'<div class="phone p{i}"><div class="notch"></div><div class="glass">{s_}</div></div>'
+            for i, s_ in enumerate(shots)
+        )
+        self.anim(
+            f"#{sc.id} .phone", "phone_in", t0 + 0.05, 1.1, stagger=0.2, easing="cubic-bezier(.16,1,.3,1)"
+        )
+        self.anim(
+            f"#{sc.id} .pair",
+            "bob",
+            t0 + 1.2,
+            2.8,
+            iterations=max(1.0, (d - 1.2) / 2.8),
+            easing="ease-in-out",
+        )
+        return (
+            f"{self.kicker(c.kicker)}{self.headline(sc.id, c.headline, 8, 4, maxh=16)}"
+            f'<div class="pair n{len(shots)}">{phones}</div>{self.text(sc.id, "subtext", c.subtext, 4, 3)}'
+        )
+
     def tpl_product_reveal(self, sc: Scene, t0: float, k: float) -> str:
         c = sc.content
         aid = c.assets[0] if c.assets else None
@@ -642,4 +762,54 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}
 .floaty.card .product{border-radius:calc(var(--u)*1.6);max-height:calc(var(--u)*72)}
 .reflect{position:absolute;left:12%;right:12%;bottom:-6%;height:10%;border-radius:50%;
   background:radial-gradient(closest-side,rgba(0,0,0,.35),transparent);filter:blur(calc(var(--u)*1.2))}
+
+/* ---- product UI templates ---- */
+.ui-card{position:relative;background:#fff;color:#111;border-radius:calc(var(--u)*__RADIUS__);padding:calc(var(--u)*5) calc(var(--u)*5.5);
+  box-shadow:0 calc(var(--u)*3) calc(var(--u)*8) rgba(0,0,0,.18),0 calc(var(--u)*.4) calc(var(--u)*1.2) rgba(0,0,0,.08);width:100%}
+.card-float{width:100%;display:flex;justify-content:center;perspective:calc(var(--u)*140)}
+.ui-row{display:flex;align-items:center;gap:calc(var(--u)*1.6);font-size:calc(var(--u)*3);font-weight:600;color:#666;margin-bottom:calc(var(--u)*1.5)}
+.ui-dot{width:calc(var(--u)*2.2);height:calc(var(--u)*2.2);border-radius:50%;background:var(--accent);box-shadow:0 0 0 calc(var(--u)*.8) color-mix(in srgb,var(--accent) 25%,transparent)}
+.ui-card .big{font-family:__DISPLAY__;font-weight:800;letter-spacing:-.04em;line-height:1;color:#0d0d0d;font-variant-numeric:tabular-nums;width:100%}
+.ui-card .lbl{font-size:calc(var(--u)*3.6);color:#555;margin-top:calc(var(--u)*1)}
+.meter{height:calc(var(--u)*1.1);background:#eee;border-radius:99px;margin-top:calc(var(--u)*4);overflow:hidden}
+.meter i{display:block;height:100%;width:72%;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#fff));border-radius:99px;transform-origin:left center}
+.minis{display:flex;gap:calc(var(--u)*3);margin-top:calc(var(--u)*3.5)}
+.mini{display:flex;flex-direction:column;gap:calc(var(--u)*.4)}.mini b{font-size:calc(var(--u)*5);font-weight:800;color:#111}.mini span{font-size:calc(var(--u)*2.8);color:#666}
+.browser{width:100%;border-radius:calc(var(--u)*2.6);overflow:hidden;background:#fff;
+  box-shadow:0 calc(var(--u)*3) calc(var(--u)*9) rgba(0,0,0,.28)}
+.browser .chrome{height:calc(var(--u)*6);display:flex;align-items:center;gap:calc(var(--u)*1.2);padding:0 calc(var(--u)*2.4);background:#f2f2f2;border-bottom:1px solid #e2e2e2}
+.browser .chrome i{width:calc(var(--u)*1.6);height:calc(var(--u)*1.6);border-radius:50%;background:#d6d6d6}
+.browser .chrome i:nth-child(1){background:#ff5f57}.browser .chrome i:nth-child(2){background:#febc2e}.browser .chrome i:nth-child(3){background:#28c840}
+.browser .url{margin-left:calc(var(--u)*2);flex:1;height:calc(var(--u)*3.6);border-radius:99px;background:#fff;font-size:calc(var(--u)*2.2);color:#888;display:flex;align-items:center;padding:0 calc(var(--u)*2)}
+.viewport{position:relative;overflow:hidden;max-height:calc(var(--u)*92);background:#fafafa}
+.landscape .viewport{max-height:calc(var(--u)*62)}
+.cam{position:relative;width:100%;transform-origin:0 0}
+.cam .shot{display:block;width:100%}
+.hl{position:absolute;border:calc(var(--u)*.7) solid var(--accent);border-radius:calc(var(--u)*1.6);
+  box-shadow:0 0 0 calc(var(--u)*100) rgba(0,0,0,.22),0 0 calc(var(--u)*4) color-mix(in srgb,var(--accent) 70%,transparent);opacity:0}
+.chip-label{align-self:center;padding:calc(var(--u)*1.6) calc(var(--u)*3.4);border-radius:99px;background:var(--accent);color:var(--accent-ink);
+  font-weight:700;font-size:calc(var(--u)*3.6);box-shadow:0 calc(var(--u)*1.2) calc(var(--u)*3) rgba(0,0,0,.25)}
+.tpl-screen_focus .content{justify-content:center;gap:calc(var(--u)*4)}
+.steps-view{width:100%;overflow:visible;padding:calc(var(--u)*4) 0}
+.steps-track{display:flex;gap:calc(var(--u)*3);width:max-content}
+.step-chip{width:calc(var(--u)*34);min-height:calc(var(--u)*34);border-radius:calc(var(--u)*3);padding:calc(var(--u)*3);display:flex;flex-direction:column;justify-content:space-between;
+  background:color-mix(in srgb,var(--ink) 8%,var(--bg));border:1px solid color-mix(in srgb,var(--ink) 14%,transparent);opacity:.45}
+.step-chip .num{font-family:__DISPLAY__;font-weight:800;font-size:calc(var(--u)*6);color:color-mix(in srgb,var(--ink) 55%,transparent)}
+.step-chip .st{font-weight:700;font-size:calc(var(--u)*4);line-height:1.15}
+.bars{display:flex;align-items:flex-end;gap:calc(var(--u)*4);height:calc(var(--u)*58)}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*1.4);height:100%}
+.bar-col .val{font-weight:800;color:#111;text-align:center;width:100%}
+.bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end}
+.bar-fill{display:block;width:100%;border-radius:calc(var(--u)*1.6) calc(var(--u)*1.6) calc(var(--u)*.6) calc(var(--u)*.6);
+  background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#fff));transform-origin:bottom center}
+.bar-col .bl{font-size:calc(var(--u)*2.8);color:#555;text-align:center}
+.pair{display:flex;justify-content:center;gap:calc(var(--u)*6);width:100%}
+.tpl-phone_pair .phone{position:relative;left:auto;bottom:auto;width:calc(var(--u)*36);aspect-ratio:9/19.5;border-radius:calc(var(--u)*6);
+  background:#0b0b0d;padding:calc(var(--u)*1.4);box-shadow:0 calc(var(--u)*3) calc(var(--u)*7) rgba(0,0,0,.45)}
+.tpl-phone_pair .phone.p1{margin-top:calc(var(--u)*8)}
+.tpl-phone_pair .glass{width:100%;height:100%;border-radius:calc(var(--u)*4.8);overflow:hidden;background:#111}
+.tpl-phone_pair .glass img{width:100%;height:100%;object-fit:cover}
+.tpl-phone_pair .notch{position:absolute;top:calc(var(--u)*2.4);left:50%;transform:translateX(-50%);width:calc(var(--u)*10);height:calc(var(--u)*2.4);border-radius:99px;background:#0b0b0d;z-index:2}
+.landscape .bars{height:calc(var(--u)*34)}.landscape .viewport{max-height:calc(var(--u)*56)}
+.square .bars{height:calc(var(--u)*44)}
 """

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import itertools
 import os
 import shutil
 import subprocess
@@ -47,7 +48,7 @@ def _motion_project(client: TestClient, **extra: object) -> dict:
     extra_ids = list(extra.pop("asset_ids", []))  # type: ignore[call-overload]
     body = {"mode": "motion", "title": "Kora promo",
             "prompt": "Kora Coffee: House Blend is ₦4,500 a bag. Order online.",
-            "options": {"aspect": "9:16", "duration_s": 8, "style": "clean_minimal"},
+            "options": {"aspect": "9:16", "duration_s": 8, "style": "clean_minimal", "voiceover": False},
             "asset_ids": [logo, photo, *extra_ids], "brand_authorized": True, **extra}  # fmt: skip
     r = client.post("/v1/projects", json=body)
     assert r.status_code == 201, r.text
@@ -135,7 +136,7 @@ def test_motion_render_template_and_reuse(client: TestClient) -> None:
     assert tpl["duration_s"] == pytest.approx(2.0, abs=0.1)
     assert [x["id"] for x in client.get("/v1/templates").json()] == [tpl["id"]]
 
-    p2 = _motion_project(client, options={"aspect": "1:1", "duration_s": 6, "style": "luxury",
+    p2 = _motion_project(client, options={"aspect": "1:1", "duration_s": 6, "style": "luxury", "voiceover": False,
                                           "outro_template_id": tpl["id"]})  # fmt: skip
     r2 = client.post(f"/v1/projects/{p2['id']}/renders", json={"resolution": 720})
     assert r2.status_code == 201
@@ -187,7 +188,9 @@ def test_motion_with_footage_voiceover_and_music(client: TestClient, tmp_path: P
     assert r.status_code == 201, r.text
     rnd = client.get(f"/v1/projects/{p2['id']}").json()["renders"][0]
     assert rnd["status"] == "ready", rnd
-    assert rnd["duration_s"] == pytest.approx(8.0, abs=0.3)
+    assert rnd["duration_s"] >= 7.9  # scenes stretch to fit the narration, never shrink
+    script = rnd["report"]["voiceover"]["script"]
+    assert len(script) == 3 and all(a["t_in"] < b["t_in"] for a, b in itertools.pairwise(script))
     out = tmp_path / "out.mp4"
     out.write_bytes(client.get(rnd["video_url"]).content)
     vol = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(out), "-af", "volumedetect", "-f", "null", "-"],

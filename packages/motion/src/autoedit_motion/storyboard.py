@@ -28,7 +28,7 @@ from .styles import get_style
 log = logging.getLogger(__name__)
 
 PROMPTS = Path(__file__).parent / "prompts"
-PROMPT_VERSION = "storyboard.v2"
+PROMPT_VERSION = "storyboard.v3"
 
 # $ per million tokens (input, output). Used for usage records and the per-job cost ceiling.
 PRICES = {
@@ -49,6 +49,11 @@ LIMITS: dict[str, dict[str, int]] = {
     "logo_sting": {"headline": 40, "subtext": 40},
     "cta_end_card": {"headline": 40, "cta": 18, "subtext": 40},
     "footage": {"kicker": 24, "headline": 40, "subtext": 80},
+    "stat_card": {"kicker": 24, "headline": 36, "subtext": 60, "value": 12, "label": 28},
+    "screen_focus": {"kicker": 24, "headline": 32, "subtext": 70},
+    "steps": {"kicker": 24, "headline": 28, "item": 26},
+    "bar_chart": {"kicker": 24, "headline": 32, "subtext": 60, "value": 10, "label": 18},
+    "phone_pair": {"kicker": 24, "headline": 32, "subtext": 60},
 }
 WORDS_PER_S = 2.9  # comfortable voiceover pace
 SLACK = 1.15  # tolerate small overruns; the renderer fits text anyway

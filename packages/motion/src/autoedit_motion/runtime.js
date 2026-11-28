@@ -113,6 +113,54 @@
       { opacity: 0, transform: `translateY(${30 * u}px) rotate(-8deg) scale(.9)` },
       { opacity: 1, transform: "translateY(0) rotate(0) scale(1)" },
     ],
+    // Product UI.
+    card_in: () => [
+      { opacity: 0, transform: `translateY(${10 * u}px) rotateX(18deg) scale(.88)`, filter: `blur(${0.6 * u}px)` },
+      { opacity: 1, transform: "translateY(0) rotateX(0) scale(1)", filter: "blur(0px)" },
+    ],
+    card_drift: () => [
+      { transform: "rotateY(0deg) rotateX(0deg) scale(1)" },
+      { transform: "rotateY(-5deg) rotateX(3deg) scale(1.02)", offset: 0.5 },
+      { transform: "rotateY(3deg) rotateX(1deg) scale(1.04)" },
+    ],
+    focus_cam: (el) => {
+      const [fx, fy, fw, fh] = (el.dataset.focus || "0.2,0.15,0.6,0.35").split(",").map(Number);
+      // Layout sizes (offsetWidth/Height) ignore the card's own entrance transform.
+      const vp = { width: el.parentElement.offsetWidth, height: el.parentElement.offsetHeight };
+      const W = el.offsetWidth, H = el.offsetHeight;
+      const z = Math.max(1, Math.min(2.6, 0.82 / Math.max(fw, (fh * H) / vp.height)));
+      const cx = (fx + fw / 2) * W, cy = (fy + fh / 2) * H;
+      const tx = vp.width / 2 - z * cx, ty = vp.height / 2 - z * cy;
+      const minX = vp.width - W * z, minY = Math.min(0, vp.height - H * z);
+      const x = Math.max(minX, Math.min(0, tx)), y = Math.max(minY, Math.min(0, ty));
+      return [{ transform: "translate(0px,0px) scale(1)" }, { transform: `translate(${x}px,${y}px) scale(${z})` }];
+    },
+    hl_in: () => [{ opacity: 0, transform: "scale(1.15)" }, { opacity: 1, transform: "scale(1)" }],
+    steps_track: (el) => {
+      const chips = [...el.children];
+      const view = el.parentElement.offsetWidth;
+      const pos = chips.map((c) => -(c.offsetLeft + c.offsetWidth / 2 - view / 2));
+      const n = chips.length;
+      const frames = [];
+      pos.forEach((x, i) => {
+        frames.push({ transform: `translateX(${x}px)`, offset: i / n, easing: "cubic-bezier(.65,0,.35,1)" });
+        frames.push({ transform: `translateX(${x}px)`, offset: Math.min(1, i / n + 0.75 / n), easing: "cubic-bezier(.65,0,.35,1)" });
+      });
+      frames[frames.length - 1].offset = 1;
+      return frames;
+    },
+    step_focus: () => [
+      { opacity: 0.45, transform: "scale(1)", background: "var(--bg)" },
+      { opacity: 1, transform: "scale(1.12)", offset: 0.25 },
+      { opacity: 1, transform: "scale(1.12)", offset: 0.75 },
+      { opacity: 0.45, transform: "scale(1)" },
+    ],
+    step_final: () => [
+      { opacity: 0.45, transform: "scale(1)" },
+      { opacity: 1, transform: "scale(1.18)", background: "var(--accent)", color: "var(--accent-ink)", offset: 0.25 },
+      { opacity: 1, transform: "scale(1.18)", background: "var(--accent)", color: "var(--accent-ink)" },
+    ],
+    bar_rise: () => [{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }],
     grain: () => [{ backgroundPosition: "0px 0px" }, { backgroundPosition: "-7370px 4630px" }],
   };
 

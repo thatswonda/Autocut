@@ -25,6 +25,11 @@ TemplateName = Literal[
     "logo_sting",
     "cta_end_card",
     "footage",
+    "stat_card",
+    "screen_focus",
+    "steps",
+    "bar_chart",
+    "phone_pair",
 ]
 
 
@@ -81,6 +86,16 @@ class SceneContent(StrictModel):
     price: str = Field(default="", max_length=40)
     cta: str = Field(default="", max_length=40, description="Button text on CTA scenes")
     assets: list[Identifier] = Field(default_factory=list)
+    focus: list[float] = Field(
+        default_factory=list, max_length=4,
+        description="screen_focus: the region to zoom into, [x, y, w, h] as fractions (0..1) of the image",
+    )  # fmt: skip
+
+    @model_validator(mode="after")
+    def _focus(self) -> SceneContent:
+        if self.focus and (len(self.focus) != 4 or any(not 0 <= v <= 1 for v in self.focus)):
+            raise ValueError("focus must be [x, y, w, h] with values between 0 and 1")
+        return self
 
 
 class Animation(StrictModel):

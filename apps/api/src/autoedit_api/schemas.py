@@ -92,7 +92,7 @@ class EditOptions(_In):
 class MotionOptions(_In):
     aspect: AspectStr = "9:16"
     duration_s: float = Field(default=20, ge=6, le=60)
-    style: str = Field(default="bold_pop", max_length=32)
+    style: str = Field(default="product_ui", max_length=32)
     language: str | None = Field(default=None, max_length=16)
     goal: Literal["promo", "product_launch", "explainer", "ad", "other"] = "promo"
     brand_name: str = Field(default="", max_length=120)
