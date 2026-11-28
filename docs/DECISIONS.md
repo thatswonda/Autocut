@@ -119,6 +119,15 @@ Every default chosen and every deviation from the PRD, with the reason. Newest m
 | D-802 | Failed renders show **Finish my video**, which renders again from the saved storyboard or edit. | A crash must not lose work. |
 | D-803 | The automatic cut only drops a part if what remains stays within 85% of the target; otherwise it trims the end. | It gave 5.9 s for a 15 s target. |
 
+## Matching the owner's reference video
+
+| # | Decision | Why |
+|---|---|---|
+| D-901 | **Voiceover-led motion videos.** The narration is recorded before animating and each scene is stretched to hold what is said over it. Storyboards without a script (older projects, or Claude leaving it out) get one written from the scenes' own fact-checked text. Voiceover is on unless the user turns it off. | The owner's reference is narrated end to end with visuals landing on the words; their render had no voice because their project predated voiceover-by-default. |
+| D-902 | **Sound design louder and denser:** a whoosh on every scene change, swipes on headlines, pops, ticks, impacts, a riser and a ding; mix at -13 LUFS (the reference sits at -12). | The owner heard no sound effects; at the old levels they were masked by the music. |
+| D-903 | **Product UI style and five templates** (`stat_card`, `screen_focus`, `steps`, `bar_chart`, `phone_pair`), modelled on the reference: white UI cards on vivid gradients and dark spotlights, numbers counting up, a camera that zooms into a screenshot region and highlights it, a numbered carousel. Claude marks the screenshot region (`focus`) by looking at the image. Product UI is the default style. | "Not good enough"; the reference shows the target look. |
+| D-904 | **Edits on slow servers:** auto-correct is measured on the 540p preview once per ~4 s of each source (not three seeks into a 4K original per cut); the preview build reports live progress. Verified on a 512 MB / half-CPU container: a 2-minute 1080p clip edited end to end in ~9 minutes, and a 2-minute 4K60 HEVC phone clip analysed in ~7 minutes with no memory failures. | The owner's 2-minute edit "broke down": 4K HEVC decoding runs at half real time there and the old auto-correct seeks multiplied it, while analysis showed 0% for minutes. |
+
 ## Deferred, with a home
 
 | Item | PRD | Lands in |
